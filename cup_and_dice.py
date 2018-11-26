@@ -47,6 +47,7 @@ class CupDice:
         cup_wall1.friction = 1
         cup_wall2.friction = 1
         cup_wall3.friction = 1
+        self.cup_walls = [cup_wall1,cup_wall2,cup_wall3]
         self.space.add(self.cup_body, cup_wall1, cup_wall2, cup_wall3)
         # self.space.add(self.cup_body, cup_wall1)
 
@@ -77,12 +78,15 @@ class CupDice:
         box_pos = Vec2d(100, 150)
         delta_box_pos = Vec2d(50, 0)
 
+        self.dice_bodies = []
+
         for i in range(3):
             size = 20
             points = [(-size, -size), (-size, size), (size,size), (size, -size)]
             mass = 1.0
             moment = pymunk.moment_for_poly(mass, points, (0,0))
             body = pymunk.Body(mass, moment)
+            self.dice_bodies.append(body)
             body.position = box_pos
             shape = pymunk.Poly(body, points)
             shape.collision_type = self.collision_types["dice"]
@@ -93,14 +97,55 @@ class CupDice:
         ### draw options for drawing
         self.draw_options = pymunk.pygame_util.DrawOptions(self.screen)
 
-
     def run(self):
         while self.running:
-            self.loop() 
+            self.loop()
+    
+    def set_space(self, settings):
+        assert(len(settings) == 21)
 
+        self.space.remove(self.cup_body)
+        for a in self.cup_walls:
+            self.space.remove(a)
+        self.cup_body = pymunk.Body()
+        cup_radius = 5
+        cup_wall1_length = 170
+        cup_wall2_length = 100
+        cup_start_x = settings[0]
+        cup_start_y = settings[1]
 
+        cup_wall1 = pymunk.Segment(self.cup_body, (cup_start_x,cup_wall1_length + cup_start_y),(cup_start_x,cup_start_y),cup_radius) #left
+        cup_wall2 = pymunk.Segment(self.cup_body, (cup_start_x,cup_start_y),(cup_wall2_length + cup_start_x,cup_start_y),cup_radius) #bottom
+        cup_wall3 = pymunk.Segment(self.cup_body, (cup_wall2_length + cup_start_x,cup_start_y),(cup_wall2_length + cup_start_x,cup_wall1_length + cup_start_y),cup_radius) #right
+        cup_wall1.mass = 5
+        cup_wall2.mass = 5
+        cup_wall3.mass = 5
+        cup_wall1.collision_type = self.collision_types["cup"]
+        cup_wall2.collision_type = self.collision_types["cup"]
+        cup_wall3.collision_type = self.collision_types["cup"]
 
-    def loop(self): 
+        cup_wall1.friction = 1
+        cup_wall2.friction = 1
+        cup_wall3.friction = 1
+        self.cup_walls = [cup_wall1,cup_wall2,cup_wall3]
+        self.space.add(self.cup_body, cup_wall1, cup_wall2, cup_wall3)
+        self.cup_body.angle = settings[2]
+        for i in range(3):
+            self.dice_bodies[i].position = (settings[3 + i * 6], settings[4 + i * 6])
+            self.dice_bodies[i].angle = settings[5 + i * 6]
+            self.dice_bodies[i].velocity = (settings[6 + i * 6], settings[7 + i * 6])
+            self.dice_bodies[i].angular_velocity = settings[8 + i * 6]
+            self.space.reindex_shapes_for_body(self.dice_bodies[i])
+
+        self.space.reindex_shapes_for_body(self.cup_body)
+        fps = 30.
+        dt = 1.0/fps/50        
+        self.space.step(dt)
+
+    def loop(self):
+        start_state = [300,300,0, 50,130,0,0,0,0, 200,130,0,0,0,0, 350,130,0,0,0,0 ]
+        goal_state  = [300,300,0, 200,125,0,0,0,0, 200,165,0,0,0,0, 200,205,0,0,0,0 ]
+
         cup_speed = 17
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -111,7 +156,10 @@ class CupDice:
                 pygame.image.save(self.screen, "box2d_pyramid.png")
             elif event.type == KEYDOWN and event.key == K_d:
                 self.drawing = not self.drawing
-
+            elif event.type == KEYDOWN and event.key == K_o:
+                self.set_space(start_state)
+            elif event.type == KEYDOWN and event.key == K_i:
+                self.set_space(goal_state)
             elif event.type == KEYDOWN and event.key == K_LEFT:
                 self.cup_body.velocity = Vec2d(-600,0) * cup_speed
             elif event.type == KEYUP and event.key == K_LEFT:
@@ -131,6 +179,9 @@ class CupDice:
                 self.cup_body.velocity = Vec2d(0,-600) * cup_speed
             elif event.type == KEYUP and event.key == K_DOWN:
                 self.cup_body.velocity = Vec2d(0,0)
+
+            elif event.type == KEYDOWN and event.key == K_r:
+                self.delete_cup_and_dice()
         
         mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
@@ -139,7 +190,7 @@ class CupDice:
         cup_orientation = self.cup_body.angle + pi/2
         mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
         angular_speed = 400
-        self.cup_body.angular_velocity = (mouse_to_cup_orientation - cup_orientation) * angular_speed
+        #self.cup_body.angular_velocity = (mouse_to_cup_orientation - cup_orientation) * angular_speed
 
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
         print(cup_body_reverse_gravity)
@@ -172,4 +223,4 @@ def main():
     demo.run()
 
 if __name__ == '__main__':
-    main()
+    main()   
