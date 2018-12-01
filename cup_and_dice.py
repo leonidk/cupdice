@@ -199,6 +199,7 @@ class CupDice:
                 self.use_mouse = not self.use_mouse
 
         speed = 100
+        key_ang_speed = 0.5
         
         if self.left_down:
             v = self.cup_body.velocity
@@ -223,9 +224,9 @@ class CupDice:
             #self.cup_body.apply_force_at_world_point((0,-1000),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((0,-1000),cup_cog_world)
         if self.e_down:
-            self.cup_body.angular_velocity -= 0.1
+            self.cup_body.angular_velocity -= key_ang_speed
         if self.q_down:
-            self.cup_body.angular_velocity += 0.1
+            self.cup_body.angular_velocity += key_ang_speed
         if not self.down_down and not self.up_down:
             v = self.cup_body.velocity
             self.cup_body.velocity = (v[0],0)
