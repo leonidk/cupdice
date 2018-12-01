@@ -124,13 +124,13 @@ class CupDice:
         self.bounds_min = self.bounds.min(1)
         self.bounds_span = self.bounds.max(1) - self.bounds_min
 
-        H = 32
-        W1 = (np.random.rand(21,H)-0.5)/(21+H)
-        W2 = (np.random.rand(H,H)-0.5)/(H+H)
-        W3 = (np.random.rand(H,3)-0.5)/(3+H)
+        H = 64
+        W1 = (np.random.randn(21,H))/np.sqrt(21/2)*0.1
+        W2 = (np.random.randn(H,H))/np.sqrt(H/2)*0.1
+        W3 = (np.random.randn(H,3))/np.sqrt(H/2)*0.1
 
         r_max = None
-        LR = 1e-6
+        LR = 3e-12
         g_array = np.ones(300)
         for i in range(300):
             g_array[i] = 0.99 ** float(i)
@@ -147,7 +147,7 @@ class CupDice:
                 epi_grad_W3 = np.zeros([300] + list(W3.shape))
 
                 epi_rewards = np.zeros(300)
-                alpha = 0.01
+                alpha = 0.00
                 for t in range(300):
                     features = np.array(self.get_state())         
 
@@ -279,7 +279,7 @@ class CupDice:
             #if not evented:
             #    self.cup_body.velocity = (0,0)
             #    self.cup_body.angular_velocity = 0
-            alpha = 0.01
+            alpha = 0.00
             features = np.array(self.get_state())         
             h1 = np.dot(features,W1)
             h2 = np.maximum(h1,alpha*h1)

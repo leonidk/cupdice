@@ -8,7 +8,7 @@ from math import pi
 
 from pdb import set_trace as st
 
-class CupDice:        
+class CupDice:
     def __init__(self):
         self.collision_types = {
             "cup": 1,
@@ -25,10 +25,10 @@ class CupDice:
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -980)
+        self.space.gravity = (0.0, -80)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
-        
+
         ### cup
         self.cup_body = pymunk.Body()
         cup_radius = 5
@@ -63,7 +63,7 @@ class CupDice:
         wall2_shape = pymunk.Segment(self.space.static_body, (wall_left, wall_bottom), (wall_left, wall_top), wall_radius) #left
         wall3_shape = pymunk.Segment(self.space.static_body, (wall_right, wall_bottom), (wall_right, wall_top), wall_radius) #right
         wall4_shape = pymunk.Segment(self.space.static_body, (wall_left, wall_top), (wall_right,wall_top), wall_radius) #top
-        
+
         wall1_shape.friction = 1.0
         wall2_shape.friction = 1.0
         wall3_shape.friction = 1.0
@@ -74,7 +74,7 @@ class CupDice:
         wall3_shape.collision_type = self.collision_types["table"]
         wall4_shape.collision_type = self.collision_types["table"]
         self.space.add(wall1_shape, wall2_shape, wall3_shape, wall4_shape)
-        
+
         # dice
         box_pos = Vec2d(100, 150)
         delta_box_pos = Vec2d(50, 0)
@@ -95,7 +95,7 @@ class CupDice:
             shape.friction = 0.5
             self.space.add(body,shape)
             box_pos = box_pos + delta_box_pos
-        
+
         self.set_space(self.start_state)
 
         ### draw options for drawing
@@ -110,7 +110,7 @@ class CupDice:
     def run(self):
         while self.running:
             self.loop()
-    
+
     def set_space(self, settings):
         assert(len(settings) == 21)
 
@@ -150,13 +150,13 @@ class CupDice:
 
         self.space.reindex_shapes_for_body(self.cup_body)
         fps = 30.
-        dt = 1.0/fps/50        
+        dt = 1.0/fps/50
         self.space.step(dt)
 
     def loop(self):
 
         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
-        
+
         for event in pygame.event.get():
             if event.type == QUIT:
                 self.running = False
@@ -196,30 +196,30 @@ class CupDice:
                 self.e_down = False
         if self.left_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]-50,v[1])
+            self.cup_body.velocity = (v[0]-30,v[1])
             #self.cup_body.apply_force_at_world_point((-1000,0),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((-1000,0),cup_cog_world)
         if self.right_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]+50,v[1])
+            self.cup_body.velocity = (v[0]+30,v[1])
             #self.cup_body.apply_force_at_world_point((1000,0),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((1000,0),cup_cog_world)
 
         if self.up_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]+50)
+            self.cup_body.velocity = (v[0],v[1]+30)
             #self.cup_body.apply_force_at_world_point((0,1000),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((0,1000),cup_cog_world)
 
         if self.down_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]-50)
+            self.cup_body.velocity = (v[0],v[1]-30)
             #self.cup_body.apply_force_at_world_point((0,-1000),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((0,-1000),cup_cog_world)
         if self.e_down:
-            self.cup_body.angular_velocity -= 0.5
+            self.cup_body.angular_velocity -= 0.1
         if self.q_down:
-            self.cup_body.angular_velocity += 0.5
+            self.cup_body.angular_velocity += 0.1
         if not self.down_down and not self.up_down:
             v = self.cup_body.velocity
             self.cup_body.velocity = (v[0],0)
@@ -234,15 +234,21 @@ class CupDice:
         mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
-        
+
         cup_orientation = self.cup_body.angle + pi/2
         mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
-        angular_speed = 100
-        #self.cup_body.angular_velocity += (mouse_to_cup_orientation - cup_orientation) * 0.2
+        angular_speed = 10
+        dist1 = mouse_to_cup_orientation - cup_orientation
+        dist2 = dist1 + 2*3.14159
+        if abs(dist1) < abs(dist2):
+            self.cup_body.angular_velocity += dist1* angular_speed
+        else:
+            self.cup_body.angular_velocity += dist2* angular_speed
+
 
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
         #print(cup_body_reverse_gravity)
-        
+
         self.space.reindex_shapes_for_body(self.cup_body)
         self.space.iterations = 25
 
@@ -257,24 +263,24 @@ class CupDice:
 
         if self.drawing:
             self.draw()
-        
+
         ### Tick clock and update fps in title
         self.clock.tick(fps)
         pygame.display.set_caption("fps: " + str(self.clock.get_fps()))
-        
+
     def draw(self):
         ### Clear the screen
         self.screen.fill(THECOLORS["white"])
-        
+
         ### Draw space
         self.space.debug_draw(self.draw_options)
 
         ### All done, lets flip the display
-        pygame.display.flip()        
+        pygame.display.flip()
 
 def main():
     demo = CupDice()
     demo.run()
 
 if __name__ == '__main__':
-    main()   
+    main()
