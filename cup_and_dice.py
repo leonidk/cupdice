@@ -25,7 +25,7 @@ class CupDice:
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -80)
+        self.space.gravity = (0.0, -400)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
 
@@ -92,7 +92,7 @@ class CupDice:
             body.position = box_pos
             shape = pymunk.Poly(body, points)
             shape.collision_type = self.collision_types["dice"]
-            shape.friction = 0.5
+            shape.friction = 0.7
             self.space.add(body,shape)
             box_pos = box_pos + delta_box_pos
 
@@ -195,7 +195,7 @@ class CupDice:
             elif event.type == KEYUP and event.key == K_e:
                 self.e_down = False
 
-        speed = 30
+        speed = 100
         
         if self.left_down:
             v = self.cup_body.velocity
