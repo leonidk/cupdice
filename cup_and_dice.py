@@ -13,12 +13,14 @@ from numpy import pi
 import argparse
 
 
+pygame.init()
+
 class CupDice:
     def __init__(self):
         self.collision_types = {
             "cup": 1,
             "dice": 2,
-            "table": 3,
+            "table": 3, 
         }
         self.start_state = [400,185,pi, 410,125,0,0,0,0, 450,125,0,0,0,0, 490,125,0,0,0,0 ]
         self.goal_state  = [400,185,pi, 450,125,0,0,0,0, 450,165,0,0,0,0, 450,205,0,0,0,0 ]
@@ -239,11 +241,23 @@ class CupDice:
 
         ### Tick clock and update fps in title
         self.clock.tick(fps)
-        pygame.display.set_caption("fps: " + str(self.clock.get_fps()))
 
     def draw(self):
         ### Clear the screen
         self.screen.fill(THECOLORS["white"])
+
+        font = pygame.font.Font('RobotoMono-Regular.ttf', 30)
+        text =  "move with the arrow keys\n"+\
+                "q: rotate ccw\n" +\
+                "e: rotate cw\n" +\
+                "m: mouse control\n"+\
+                "o: start state\n"+\
+                "i: final state"
+        y = 65
+        for line in text.splitlines():
+            text = font.render(line, 1,THECOLORS["grey"])
+            self.screen.blit(text, (65,y))
+            y += 30
 
         ### Draw space
         self.space.debug_draw(self.draw_options)
