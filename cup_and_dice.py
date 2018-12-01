@@ -19,13 +19,13 @@ class CupDice:
         self.goal_state  = [300,300,0, 200,125,0,0,0,0, 200,165,0,0,0,0, 200,205,0,0,0,0 ]
         self.running = True
         self.drawing = True
-        self.w, self.h = 600,600
+        self.w, self.h = 900,700
         self.screen = pygame.display.set_mode((self.w, self.h))
         self.clock = pygame.time.Clock()
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -980)
+        self.space.gravity = (0.0, -300)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
         
@@ -54,9 +54,9 @@ class CupDice:
 
         # walls
         wall_left = 5
-        wall_right = 595
-        wall_top = 595
-        wall_bottom = 100
+        wall_right = self.w - 5
+        wall_top = self.h - 5
+        wall_bottom = 50
 
         wall_radius = 3
         wall1_shape = pymunk.Segment(self.space.static_body, (wall_left, wall_bottom), (wall_right,wall_bottom), wall_radius) #bottom
@@ -194,26 +194,29 @@ class CupDice:
                 self.e_down = True
             elif event.type == KEYUP and event.key == K_e:
                 self.e_down = False
+
+        speed = 100
+        
         if self.left_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]-50,v[1])
+            self.cup_body.velocity = (v[0]-speed,v[1])
             #self.cup_body.apply_force_at_world_point((-1000,0),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((-1000,0),cup_cog_world)
         if self.right_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]+50,v[1])
+            self.cup_body.velocity = (v[0]+speed,v[1])
             #self.cup_body.apply_force_at_world_point((1000,0),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((1000,0),cup_cog_world)
 
         if self.up_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]+50)
+            self.cup_body.velocity = (v[0],v[1]+speed)
             #self.cup_body.apply_force_at_world_point((0,1000),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((0,1000),cup_cog_world)
 
         if self.down_down:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]-50)
+            self.cup_body.velocity = (v[0],v[1]-speed)
             #self.cup_body.apply_force_at_world_point((0,-1000),cup_cog_world)
             #self.cup_body.apply_impulse_at_world_point((0,-1000),cup_cog_world)
         if self.e_down:
@@ -236,9 +239,17 @@ class CupDice:
         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
         
         cup_orientation = self.cup_body.angle + pi/2
+        # print('cup_orientation: {:.2f}'.format(cup_orientation))
         mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
-        angular_speed = 100
-        #self.cup_body.angular_velocity += (mouse_to_cup_orientation - cup_orientation) * 0.2
+        # print('mouse_to_cup_orientation: {:.2f}'.format(mouse_to_cup_orientation))
+        
+        angular_speed = 20
+        dist1 = mouse_to_cup_orientation - cup_orientation
+        dist2 = dist1 + 2*pi
+        if abs(dist1) < abs(dist2):
+            self.cup_body.angular_velocity += dist1 * angular_speed
+        else:
+            self.cup_body.angular_velocity += dist2 * angular_speed
 
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
         #print(cup_body_reverse_gravity)
