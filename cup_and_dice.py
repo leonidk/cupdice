@@ -93,7 +93,7 @@ class CupDice:
             body.position = box_pos
             shape = pymunk.Poly(body, points)
             shape.collision_type = self.collision_types["dice"]
-            shape.friction = 0.7
+            shape.friction = 0.6
             self.space.add(body,shape)
             box_pos = box_pos + delta_box_pos
 
@@ -136,9 +136,9 @@ class CupDice:
         cup_wall2.collision_type = self.collision_types["cup"]
         cup_wall3.collision_type = self.collision_types["cup"]
 
-        cup_wall1.friction = 0.8
-        cup_wall2.friction = 0.8
-        cup_wall3.friction = 0.8
+        cup_wall1.friction = 0.4
+        cup_wall2.friction = 0.4
+        cup_wall3.friction = 0.4
         self.cup_walls = [cup_wall1,cup_wall2,cup_wall3]
         self.space.add(self.cup_body, cup_wall1, cup_wall2, cup_wall3)
         self.cup_body.angle = settings[2]
