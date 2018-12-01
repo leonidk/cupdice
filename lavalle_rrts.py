@@ -19,9 +19,9 @@ YDIM = 500
 WINSIZE = np.array([XDIM, YDIM])
 MAX_STEP_SIZE = 12
 NUMNODES = 5000
-NUM_OBSTACLES = 25
-OBSTACLE_WIDTH = 100
-OBSTACLE_HEIGHT = 100
+NUM_OBSTACLES = 30
+OBSTACLE_WIDTH = 80
+OBSTACLE_HEIGHT = 80
 RAND_SEARCH_PROB = 0.25
 GOAL_TOL = 1e-3
 
@@ -70,12 +70,16 @@ def main():
     print(nodes.shape,connections.shape)
     for goal in [goal1,goal2]:
         searching = True
+        prev_node = None
         for i in range(NUMNODES):
             if searching:
                 # get a random configuration
                 #valid = False
                 #while not valid:
-                rand = np.random.rand(1,2)*WINSIZE if np.random.rand() > RAND_SEARCH_PROB else goal
+                if prev_node is None:
+                    rand = np.random.rand(1,2)*WINSIZE if np.random.rand() > RAND_SEARCH_PROB else goal
+                else:
+                    rand = prev_node
                     #valid = True
                     #for o in obstacles:
                         #if (o[:2] < rand[0]).all() and (o[:2]+o[2:] > rand[0]).all():
@@ -93,6 +97,12 @@ def main():
                         valid_new_node = False
                         break
                 if valid_new_node:
+                    if (rand == goal).all() and np.linalg.norm(new_node - goal) < dists.min():
+                        prev_node = new_node
+                        #print('new')
+                    else:
+                        prev_node = None
+                        #print('cancel')
                     if np.linalg.norm(new_node - goal) > GOAL_TOL:
                         #print(goal,new_node)
 
@@ -110,6 +120,8 @@ def main():
                         print(0)
                         searching = False
                         break
+                else:
+                    prev_node = None
             pygame.display.update()
             #print i, "    ", nodes
 
