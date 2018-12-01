@@ -15,13 +15,14 @@ class CupDice:
             "dice": 2,
             "table": 3,
         }
-        self.start_state = [300,300,0, 100,125,0,0,0,0, 200,125,0,0,0,0, 300,125,0,0,0,0 ]
-        self.goal_state  = [300,300,0, 200,125,0,0,0,0, 200,165,0,0,0,0, 200,205,0,0,0,0 ]
+        self.start_state = [400,185,pi, 410,125,0,0,0,0, 450,125,0,0,0,0, 490,125,0,0,0,0 ]
+        self.goal_state  = [400,185,pi, 450,125,0,0,0,0, 450,165,0,0,0,0, 450,205,0,0,0,0 ]
         self.running = True
         self.drawing = True
         self.w, self.h = 900,700
         self.screen = pygame.display.set_mode((self.w, self.h))
         self.clock = pygame.time.Clock()
+        self.use_mouse = False
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
@@ -56,9 +57,9 @@ class CupDice:
         wall_left = 5
         wall_right = self.w - 5
         wall_top = self.h - 5
-        wall_bottom = 50
+        wall_bottom = 60
 
-        wall_radius = 3
+        wall_radius = 40
         wall1_shape = pymunk.Segment(self.space.static_body, (wall_left, wall_bottom), (wall_right,wall_bottom), wall_radius) #bottom
         wall2_shape = pymunk.Segment(self.space.static_body, (wall_left, wall_bottom), (wall_left, wall_top), wall_radius) #left
         wall3_shape = pymunk.Segment(self.space.static_body, (wall_right, wall_bottom), (wall_right, wall_top), wall_radius) #right
@@ -194,6 +195,8 @@ class CupDice:
                 self.e_down = True
             elif event.type == KEYUP and event.key == K_e:
                 self.e_down = False
+            elif event.type == KEYUP and event.key == K_m:
+                self.use_mouse = not self.use_mouse
 
         speed = 100
         
@@ -234,22 +237,24 @@ class CupDice:
         #if not evented:
         #    self.cup_body.velocity = (0,0)
         #    self.cup_body.angular_velocity = 0
-        mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
-        cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+        if self.use_mouse:
+            mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
-        cup_orientation = self.cup_body.angle + pi/2
-        # print('cup_orientation: {:.2f}'.format(cup_orientation))
-        mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
-        # print('mouse_to_cup_orientation: {:.2f}'.format(mouse_to_cup_orientation))
-        
-        angular_speed = 10
-        dist1 = mouse_to_cup_orientation - cup_orientation
-        dist2 = dist1 + 2*pi
-        if abs(dist1) < abs(dist2):
-            self.cup_body.angular_velocity += dist1 * angular_speed
-        else:
-            self.cup_body.angular_velocity += dist2 * angular_speed
+            cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+
+            cup_orientation = self.cup_body.angle + pi/2
+            # print('cup_orientation: {:.2f}'.format(cup_orientation))
+            mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
+            # print('mouse_to_cup_orientation: {:.2f}'.format(mouse_to_cup_orientation))
+            
+            angular_speed = 10
+            dist1 = mouse_to_cup_orientation - cup_orientation
+            dist2 = dist1 + 2*pi
+            if abs(dist1) < abs(dist2):
+                self.cup_body.angular_velocity += dist1 * angular_speed
+            else:
+                self.cup_body.angular_velocity += dist2 * angular_speed
 
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
         #print(cup_body_reverse_gravity)
