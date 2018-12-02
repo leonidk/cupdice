@@ -100,6 +100,7 @@ class CupDice:
     def run(self):
         while self.running:
             self.loop()
+            
     def get_state(self):
         settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
         for i in range(3):
@@ -110,6 +111,7 @@ class CupDice:
             settings.append(self.dice_bodies[i].velocity[1])
             settings.append(self.dice_bodies[i].angular_velocity)
         return settings
+
     def save_dataset(self):
         if (self.args.r != 0):
             base_name = "imitate_{}.csv"
