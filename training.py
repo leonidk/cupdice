@@ -20,7 +20,7 @@ def main(args):
         data_dim = datalist[0].shape[1]
 
         dataset = np.zeros((data_len, 27))
-        variances = np.zeros((data_len))
+        variances = np.zeros((24))
 
         row_ptr = 0
         for d in datalist:
@@ -34,11 +34,9 @@ def main(args):
             dataset[row_ptr : row_ptr + num_rows, 21:24] = velocities
             dataset[row_ptr : row_ptr + num_rows, 24:] = velocity_diff
 
-            variances[row_ptr : row_ptr + num_rows] = \
-                np.var(dataset[row_ptr : row_ptr + num_rows, 0:24],axis=1)
-
             row_ptr += num_rows
 
+        variances = np.var(dataset[:,0:24],axis=0)
         np.savetxt(args.datadir + args.data_save, dataset, delimiter=",")
         np.savetxt(args.datadir + args.var_save, variances, delimiter=",")
 
