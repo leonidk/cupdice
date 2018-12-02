@@ -12,6 +12,8 @@ from numpy import pi
 
 import argparse
 import sys
+import os
+import math
 
 pygame.init()
 
@@ -32,6 +34,7 @@ class CupDice:
         self.use_mouse = (args.m != 0)
         self.cup_body = None
         self.args = args
+        self.dataset = []
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
@@ -97,6 +100,26 @@ class CupDice:
     def run(self):
         while self.running:
             self.loop()
+    def get_state(self):
+        settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
+        for i in range(3):
+            settings.append(self.dice_bodies[i].position[0])
+            settings.append(self.dice_bodies[i].position[1])
+            settings.append(self.dice_bodies[i].angle)
+            settings.append(self.dice_bodies[i].velocity[0])
+            settings.append(self.dice_bodies[i].velocity[1])
+            settings.append(self.dice_bodies[i].angular_velocity)
+        return settings
+    def save_dataset(self):
+        if (self.args.r != 0):
+            base_name = "imitate_{}.csv"
+            i = 0
+            while True:
+                if not os.path.exists(base_name.format(i)):
+                    break
+                i+=1
+            recording_name = base_name.format(i)
+            np.savetxt(recording_name, np.array(self.dataset), delimiter=",")
 
     def set_space(self, settings):
         assert(len(settings) == 21)
@@ -154,6 +177,11 @@ class CupDice:
                 self.drawing = not self.drawing
             elif event.type == KEYDOWN and event.key == K_o:
                 self.set_space(self.start_state)
+                self.dataset = []
+            elif event.type == KEYDOWN and event.key == K_s:
+                self.save_dataset()
+                self.set_space(self.start_state)
+                self.dataset = []
             elif event.type == KEYDOWN and event.key == K_i:
                 self.set_space(self.goal_state)
             elif event.type == KEYDOWN and event.key == K_LEFT:
@@ -215,17 +243,20 @@ class CupDice:
 
             cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
 
-            cup_orientation = self.cup_body.angle + pi/2
+            cup_orientation =self.cup_body.angle + pi/2
             mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
             
             angular_speed = 10
             dist1 = mouse_to_cup_orientation - cup_orientation
+            #print([_ for _ in [self.cup_body.angle,cup_orientation,mouse_to_cup_orientation,self.cup_body.angle]])
             dist2 = dist1 + 2*pi
-            if abs(dist1) < abs(dist2):
-                self.cup_body.angular_velocity += dist1 * angular_speed
-            else:
-                self.cup_body.angular_velocity += dist2 * angular_speed
-
+            dist3 = dist1 - 2*pi
+            dists = [dist1,dist2]
+            dists = sorted([(abs(_),_) for _ in dists])
+            self.cup_body.angular_velocity += dists[0][1] * angular_speed
+            #print(dists[0][1])
+            #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
+            #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
         self.space.reindex_shapes_for_body(self.cup_body)
@@ -239,6 +270,8 @@ class CupDice:
             self.space.step(dt/steps)
         if self.drawing:
             self.draw()
+        if (self.args.r != 0):
+            self.dataset.append(self.get_state() + [self.cup_body.velocity[0], self.cup_body.velocity[1],self.cup_body.angular_velocity])
 
         ### Tick clock and update fps in title
         self.clock.tick(fps)
@@ -274,5 +307,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--m", action="store_true",
                         help="use mouse input")
+    parser.add_argument("--r", action="store_true",
+                        help="record data")
     args = parser.parse_args()
     main(args)
