@@ -33,8 +33,10 @@ class CupDice:
             "dice": 2,
             "table": 3, 
         }
-        self.start_state = [400,185,pi, 410,125,0,0,0,0, 450,125,0,0,0,0, 490,125,0,0,0,0 ]
-        self.goal_state  = [400,185,pi, 450,125,0,0,0,0, 450,165,0,0,0,0, 450,205,0,0,0,0 ]
+        self.start_state = [400,185,pi, 410,125,0,0,0,0, 450,125,0,0,0,0, 490,125,0,0,0,0, 0,0,0]
+        self.goal_state  = [400,185,pi, 450,125,0,0,0,0, 450,165,0,0,0,0, 450,205,0,0,0,0, 0,0,0]
+        self.cost_std = [242.479,209.024,0.489,130.643,64.346,1.886,491.836,103.828,2.239,125.137,54.608,1.979,468.258,98.720,2.186,126.970,62.748,2.546,471.087,102.686,2.435,497.239,109.929,1.728]
+        self.cost_std = np.array(self.cost_std)
         self.running = True
         self.drawing = True
         self.w, self.h = 900,700
@@ -47,7 +49,7 @@ class CupDice:
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -400)
+        self.space.gravity = (0.0, -1600)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
 
@@ -114,35 +116,37 @@ class CupDice:
         if self.args.policy == 'play':
             while self.running:
                 self.loop()
-        elif self.args.policy == 'cma':
+        elif self.args.policy == 'cma' or self.args.policy == 'de':
             policy_length = 50
-            lC = 50
-            aC = 5
-            feval_max = 10000
+            xC = 400
+            yC = 400
+            aC = 2
+            feval_max = 1500
             def func(x):
-                self.set_space(self.start_state)
                 err = 0
-                for i in range(policy_length):
-                    v = self.cup_body.velocity
-                    self.cup_body.velocity = (v[0]+x[i*3+0]*lC,v[1]+x[i*3+1]*lC)
-                    self.cup_body.angular_velocity += x[i*3+2]*aC
+                for n in range(3):
+                    self.set_space(self.start_state)
+                    for i in range(policy_length):
+                        v = self.cup_body.velocity
+                        self.cup_body.velocity = (v[0] + x[i*3+0]*xC,v[1] + x[i*3+1]*yC)
+                        self.cup_body.angular_velocity += x[i*3+2]*aC
 
-                    cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
-                    cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
+                        cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+                        cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
-                    fps = 30.
-                    dt = (1/fps)
-                    steps = 5
-                    for _ in range(steps):
-                        self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
-                        self.space.step(dt/steps)
-                    discount = (0.9 ** (policy_length-i-1))
-                    state_err = np.linalg.norm(self.get_state()[3:]-np.squeeze(self.goal_state)[3:])
-                    err += state_err * discount
-                    #print(i,discount,state_err)
-                #new_state = self.get_state()
-                return err#np.linalg.norm(new_state[3:]-np.squeeze(self.goal_state)[3:])
-            if True:
+                        fps = 30.
+                        dt = (1/fps)
+                        steps = 5
+                        for _ in range(steps):
+                            self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
+                            self.space.step(dt/steps)
+                        discount = (0.1 ** (policy_length-i-1))
+                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:]))#/self.cost_std[3:])
+                        err += state_err * discount
+                        #print(i,discount,state_err)
+                new_state = self.get_state()
+                return err#np.linalg.norm( (new_state[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:]) 
+            if self.args.policy == 'cma':
                 import cma
                 popsize = 4+int(3*np.log(3*policy_length))
                 es = cma.CMAEvolutionStrategy(np.zeros(policy_length*3),0.5,{'popsize': popsize, 'maxfevals':feval_max,'verb_log':0})
@@ -167,7 +171,7 @@ class CupDice:
                 if itr % policy_length == 0:
                     self.set_space(self.start_state)
                 mi = itr % policy_length
-                self.loop(x[mi:mi+3] * np.array([lC,lC,aC]))
+                self.loop(x[mi:mi+3] * np.array([xC,yC,aC]))
                 itr += 1
             
     def get_state(self):
@@ -179,6 +183,9 @@ class CupDice:
             settings.append(self.dice_bodies[i].velocity[0])
             settings.append(self.dice_bodies[i].velocity[1])
             settings.append(self.dice_bodies[i].angular_velocity)
+        settings.append(self.cup_body.velocity[0])
+        settings.append(self.cup_body.velocity[1])
+        settings.append(self.cup_body.angular_velocity)
         return settings
 
     def save_dataset(self):
@@ -193,7 +200,7 @@ class CupDice:
             np.savetxt(recording_name, np.array(self.dataset), delimiter=",")
 
     def set_space(self, settings):
-        assert(len(settings) == 21)
+        assert(len(settings) == 24)
 
         if self.cup_body is not None:
             self.space.remove(self.cup_body)
@@ -233,7 +240,7 @@ class CupDice:
         self.space.reindex_shapes_for_body(self.cup_body)
         fps = 30.
         dt = 1.0/fps/50
-        self.space.step(dt)
+        self.space.step(dt*0.001)
 
     def loop(self, action_vector = None):
         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
@@ -286,7 +293,7 @@ class CupDice:
         key_ang_speed = 0.5
         if action_vector is not None:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]+action_vector[0],v[1]+action_vector[1])
+            self.cup_body.velocity = (v[0] + action_vector[0], v[1] + action_vector[1])
             self.cup_body.angular_velocity += action_vector[2]
         else:
             if self.left_down:
@@ -346,7 +353,7 @@ class CupDice:
         if self.drawing:
             self.draw()
         if (self.args.r != 0):
-            self.dataset.append(self.get_state() + [self.cup_body.velocity[0], self.cup_body.velocity[1],self.cup_body.angular_velocity])
+            self.dataset.append(self.get_state())
 
         ### Tick clock and update fps in title
         self.clock.tick(fps)
@@ -384,6 +391,6 @@ if __name__ == '__main__':
                         help="use mouse input")
     parser.add_argument("--r", action="store_true",
                         help="record data")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de'])
     args = parser.parse_args()
     main(args)
