@@ -49,7 +49,7 @@ class CupDice:
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -1600)
+        self.space.gravity = (0.0, -1600*args.gm)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
 
@@ -117,14 +117,14 @@ class CupDice:
             while self.running:
                 self.loop()
         elif self.args.policy == 'cma' or self.args.policy == 'de':
-            policy_length = 50
-            xC = 400
-            yC = 400
-            aC = 2
-            feval_max = 1500
+            policy_length = self.args.pl
+            xC = 100*self.args.gm
+            yC = 100*self.args.gm
+            aC = 0.5*self.args.gm
+            feval_max = 10000
             def func(x):
                 err = 0
-                for n in range(3):
+                for n in range(self.args.n):
                     self.set_space(self.start_state)
                     for i in range(policy_length):
                         v = self.cup_body.velocity
@@ -289,8 +289,8 @@ class CupDice:
             elif event.type == KEYUP and event.key == K_m:
                 self.use_mouse = not self.use_mouse
 
-        speed = 100
-        key_ang_speed = 0.5
+        speed = 100*self.args.gm
+        key_ang_speed = 0.5*self.args.gm
         if action_vector is not None:
             v = self.cup_body.velocity
             self.cup_body.velocity = (v[0] + action_vector[0], v[1] + action_vector[1])
@@ -386,9 +386,15 @@ def main(args):
     demo.run()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--m", action="store_true",
                         help="use mouse input")
+    parser.add_argument("--gm", type=float,default=1.0,
+                        help="change gravity and forces")
+    parser.add_argument("--n", type=int,default=1,
+                        help="number of iterations for optimization")
+    parser.add_argument("--pl", type=int,default=50,
+                        help="length of learned policy")
     parser.add_argument("--r", action="store_true",
                         help="record data")
     parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de'])
