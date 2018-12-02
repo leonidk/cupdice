@@ -17,6 +17,15 @@ import math
 
 pygame.init()
 
+
+class TimePolicy:
+    def __init__(self,actions):
+        self.N = actions.shape[0]
+        self.actions = actions
+    def action(self,timestep,state):
+        return self.actions[timestep % self.N]
+
+
 class CupDice:
     def __init__(self,args):
         self.collision_types = {
@@ -98,8 +107,68 @@ class CupDice:
         self.q_down = False
         self.e_down = False
     def run(self):
-        while self.running:
-            self.loop()
+        self.set_space(self.start_state)
+        print(self.start_state)
+        print(self.get_state())
+        print(np.linalg.norm(self.get_state()[3:]-np.squeeze(self.start_state)[3:]))
+        if self.args.policy == 'play':
+            while self.running:
+                self.loop()
+        elif self.args.policy == 'cma':
+            policy_length = 50
+            lC = 50
+            aC = 5
+            feval_max = 10000
+            def func(x):
+                self.set_space(self.start_state)
+                err = 0
+                for i in range(policy_length):
+                    v = self.cup_body.velocity
+                    self.cup_body.velocity = (v[0]+x[i*3+0]*lC,v[1]+x[i*3+1]*lC)
+                    self.cup_body.angular_velocity += x[i*3+2]*aC
+
+                    cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+                    cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
+
+                    fps = 30.
+                    dt = (1/fps)
+                    steps = 5
+                    for _ in range(steps):
+                        self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
+                        self.space.step(dt/steps)
+                    discount = (0.9 ** (policy_length-i-1))
+                    state_err = np.linalg.norm(self.get_state()[3:]-np.squeeze(self.goal_state)[3:])
+                    err += state_err * discount
+                    #print(i,discount,state_err)
+                #new_state = self.get_state()
+                return err#np.linalg.norm(new_state[3:]-np.squeeze(self.goal_state)[3:])
+            if True:
+                import cma
+                popsize = 4+int(3*np.log(3*policy_length))
+                es = cma.CMAEvolutionStrategy(np.zeros(policy_length*3),0.5,{'popsize': popsize, 'maxfevals':feval_max,'verb_log':0})
+                es.optimize(func)
+
+                print(es.result_pretty())
+                x = es.result.xbest
+            else:
+                import scipy.optimize as opt
+                popsize = 15
+                maxiter = int(round(feval_max/(popsize*(3*policy_length))))
+                print(maxiter)
+                res = opt.differential_evolution(func,
+                                    bounds=[(-1,1) for _ in range(3*policy_length)],
+                                    maxiter=maxiter,polish=False,tol=0.001,popsize=popsize,
+                                    disp=True)
+                x = res.x
+            print(func(np.zeros(policy_length*3)),func(x))
+            self.set_space(self.start_state)
+            itr = 0
+            while self.running:
+                if itr % policy_length == 0:
+                    self.set_space(self.start_state)
+                mi = itr % policy_length
+                self.loop(x[mi:mi+3] * np.array([lC,lC,aC]))
+                itr += 1
             
     def get_state(self):
         settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
@@ -166,7 +235,7 @@ class CupDice:
         dt = 1.0/fps/50
         self.space.step(dt)
 
-    def loop(self):
+    def loop(self, action_vector = None):
         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -215,50 +284,54 @@ class CupDice:
 
         speed = 100
         key_ang_speed = 0.5
-        
-        if self.left_down:
+        if action_vector is not None:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]-speed,v[1])
-        if self.right_down:
-            v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0]+speed,v[1])
-        if self.up_down:
-            v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]+speed)
-        if self.down_down:
-            v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],v[1]-speed)
-        if self.e_down:
-            self.cup_body.angular_velocity -= key_ang_speed
-        if self.q_down:
-            self.cup_body.angular_velocity += key_ang_speed
-        if not self.down_down and not self.up_down:
-            v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0],0)
-        if not self.left_down and not self.right_down:
-            v = self.cup_body.velocity
-            self.cup_body.velocity = (0,v[1])
-        if not self.q_down and not self.e_down:
-            self.cup_body.angular_velocity = 0
-        if self.use_mouse:
-            mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
+            self.cup_body.velocity = (v[0]+action_vector[0],v[1]+action_vector[1])
+            self.cup_body.angular_velocity += action_vector[2]
+        else:
+            if self.left_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (v[0]-speed,v[1])
+            if self.right_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (v[0]+speed,v[1])
+            if self.up_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (v[0],v[1]+speed)
+            if self.down_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (v[0],v[1]-speed)
+            if self.e_down:
+                self.cup_body.angular_velocity -= key_ang_speed
+            if self.q_down:
+                self.cup_body.angular_velocity += key_ang_speed
+            if not self.down_down and not self.up_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (v[0],0)
+            if not self.left_down and not self.right_down:
+                v = self.cup_body.velocity
+                self.cup_body.velocity = (0,v[1])
+            if not self.q_down and not self.e_down:
+                self.cup_body.angular_velocity = 0
+            if self.use_mouse:
+                mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
-            cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+                cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
 
-            cup_orientation =self.cup_body.angle + pi/2
-            mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
-            
-            angular_speed = 10
-            dist1 = mouse_to_cup_orientation - cup_orientation
-            #print([_ for _ in [self.cup_body.angle,cup_orientation,mouse_to_cup_orientation,self.cup_body.angle]])
-            dist2 = dist1 + 2*pi
-            dist3 = dist1 - 2*pi
-            dists = [dist1,dist2]
-            dists = sorted([(abs(_),_) for _ in dists])
-            self.cup_body.angular_velocity += dists[0][1] * angular_speed
-            #print(dists[0][1])
-            #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
-            #print(dist1,dist2,dist3)
+                cup_orientation =self.cup_body.angle + pi/2
+                mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
+                
+                angular_speed = 10
+                dist1 = mouse_to_cup_orientation - cup_orientation
+                #print([_ for _ in [self.cup_body.angle,cup_orientation,mouse_to_cup_orientation,self.cup_body.angle]])
+                dist2 = dist1 + 2*pi
+                dist3 = dist1 - 2*pi
+                dists = [dist1,dist2]
+                dists = sorted([(abs(_),_) for _ in dists])
+                self.cup_body.angular_velocity += dists[0][1] * angular_speed
+                #print(dists[0][1])
+                #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
+                #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
         self.space.reindex_shapes_for_body(self.cup_body)
@@ -311,5 +384,6 @@ if __name__ == '__main__':
                         help="use mouse input")
     parser.add_argument("--r", action="store_true",
                         help="record data")
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma'])
     args = parser.parse_args()
     main(args)
