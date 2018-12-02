@@ -15,9 +15,6 @@ import sys
 import os
 import math
 
-pygame.init()
-
-
 class TimePolicy:
     def __init__(self,actions):
         self.N = actions.shape[0]
@@ -33,8 +30,8 @@ class CupDice:
             "dice": 2,
             "table": 3, 
         }
-        self.start_state = [400,185,pi, 410,125,0,0,0,0, 450,125,0,0,0,0, 490,125,0,0,0,0, 0,0,0]
-        self.goal_state  = [400,185,pi, 450,125,0,0,0,0, 450,165,0,0,0,0, 450,205,0,0,0,0, 0,0,0]
+        self.start_state = [400,190,pi, 408,125,0,0,0,0, 451,125,0,0,0,0, 493,125,0,0,0,0, 0,0,0]
+        self.goal_state  = [400,190,pi, 451,125,0,0,0,0, 451,165,0,0,0,0, 451,205,0,0,0,0, 0,0,0]
         self.cost_std = [242.479,209.024,0.489,130.643,64.346,1.886,491.836,103.828,2.239,125.137,54.608,1.979,468.258,98.720,2.186,126.970,62.748,2.546,471.087,102.686,2.435,497.239,109.929,1.728]
         self.cost_std = np.array(self.cost_std)
         self.running = True
@@ -121,7 +118,7 @@ class CupDice:
             xC = 100*self.args.gm
             yC = 100*self.args.gm
             aC = 0.5*self.args.gm
-            feval_max = 10000
+            feval_max = self.args.maxf
             def func(x):
                 err = 0
                 for n in range(self.args.n):
@@ -140,10 +137,10 @@ class CupDice:
                         for _ in range(steps):
                             self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
                             self.space.step(dt/steps)
-                        discount = (0.1 ** (policy_length-i-1))
-                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:]))#/self.cost_std[3:])
+                        discount = (self.args.discount ** (policy_length-i-1))
+                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:])
                         err += state_err * discount
-                        #print(i,discount,state_err)
+
                 new_state = self.get_state()
                 return err#np.linalg.norm( (new_state[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:]) 
             if self.args.policy == 'cma':
@@ -382,8 +379,11 @@ class CupDice:
         pygame.display.flip()
 
 def main(args):
+    pygame.init()
     demo = CupDice(args)
     demo.run()
+    pygame.display.quit()
+    pygame.quit()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -391,6 +391,10 @@ if __name__ == '__main__':
                         help="use mouse input")
     parser.add_argument("--gm", type=float,default=1.0,
                         help="change gravity and forces")
+    parser.add_argument("--discount", type=float,default=0.1,
+                        help="change discount factor")
+    parser.add_argument("--maxf", type=int,default=5000,
+                        help="maximum number of function evaluations")
     parser.add_argument("--n", type=int,default=1,
                         help="number of iterations for optimization")
     parser.add_argument("--pl", type=int,default=50,
