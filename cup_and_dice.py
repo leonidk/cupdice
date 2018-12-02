@@ -109,15 +109,20 @@ class CupDice:
         self.set_space(self.start_state)
         print(self.start_state)
         print(self.get_state())
-        print(np.linalg.norm(self.get_state()[3:]-np.squeeze(self.start_state)[3:]))
+        print(np.linalg.norm((self.get_state()[3:-3]-np.squeeze(self.start_state)[3:-3])/self.cost_std[3:-3]))
         if self.args.policy == 'play':
             while self.running:
                 self.loop()
         elif self.args.policy == 'cma' or self.args.policy == 'de':
             policy_length = self.args.pl
-            xC = 100*self.args.gm
-            yC = 100*self.args.gm
-            aC = 0.5*self.args.gm
+            if self.args.pv > 0.5:
+                xC = 100*self.args.gm # 100,100, 0.5
+                yC = 10*self.args.gm # 1500,20,5
+                aC = 0.5*self.args.gm
+            else:
+                xC = 800*self.args.gm # 100,100, 0.5
+                yC = 40*self.args.gm # 1500,20,5
+                aC = 2*self.args.gm
             feval_max = self.args.maxf
             def func(x):
                 err = 0
@@ -125,8 +130,8 @@ class CupDice:
                     self.set_space(self.start_state)
                     for i in range(policy_length):
                         v = self.cup_body.velocity
-                        self.cup_body.velocity = (v[0] + x[i*3+0]*xC,v[1] + x[i*3+1]*yC)
-                        self.cup_body.angular_velocity += x[i*3+2]*aC
+                        self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
+                        self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
 
                         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
                         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
@@ -138,7 +143,7 @@ class CupDice:
                             self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
                             self.space.step(dt/steps)
                         discount = (self.args.discount ** (policy_length-i-1))
-                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:])
+                        state_err = np.linalg.norm((self.get_state()[3:-3]-np.squeeze(self.goal_state)[3:-3])/self.cost_std[3:-3])
                         err += state_err * discount
 
                 new_state = self.get_state()
@@ -290,8 +295,8 @@ class CupDice:
         key_ang_speed = 0.5*self.args.gm
         if action_vector is not None:
             v = self.cup_body.velocity
-            self.cup_body.velocity = (v[0] + action_vector[0], v[1] + action_vector[1])
-            self.cup_body.angular_velocity += action_vector[2]
+            self.cup_body.velocity = ( self.args.pv*v[0]+action_vector[0], self.args.pv*v[1]+action_vector[1])
+            self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + action_vector[2]
         else:
             if self.left_down:
                 v = self.cup_body.velocity
@@ -391,6 +396,8 @@ if __name__ == '__main__':
                         help="use mouse input")
     parser.add_argument("--gm", type=float,default=1.0,
                         help="change gravity and forces")
+    parser.add_argument("--pv", type=float,default=1.0,
+                        help="amount of previous velocity to use")
     parser.add_argument("--discount", type=float,default=0.1,
                         help="change discount factor")
     parser.add_argument("--maxf", type=int,default=5000,
