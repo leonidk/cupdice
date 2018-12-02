@@ -11,12 +11,12 @@ import numpy as np
 from numpy import pi
 
 import argparse
-
+import sys
 
 pygame.init()
 
 class CupDice:
-    def __init__(self):
+    def __init__(self,args):
         self.collision_types = {
             "cup": 1,
             "dice": 2,
@@ -29,8 +29,9 @@ class CupDice:
         self.w, self.h = 900,700
         self.screen = pygame.display.set_mode((self.w, self.h))
         self.clock = pygame.time.Clock()
-        self.use_mouse = False
+        self.use_mouse = (args.m != 0)
         self.cup_body = None
+        self.args = args
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
@@ -265,9 +266,13 @@ class CupDice:
         ### All done, lets flip the display
         pygame.display.flip()
 
-def main():
-    demo = CupDice()
+def main(args):
+    demo = CupDice(args)
     demo.run()
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--m", action="store_true",
+                        help="use mouse input")
+    args = parser.parse_args()
+    main(args)
