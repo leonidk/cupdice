@@ -204,13 +204,14 @@ class CupDice:
                 self.loop(x[mi:mi+3] * np.array([xC,yC,aC]))
                 itr += 1
         elif self.args.policy == 'replay':
-            self.set_space(self.start_state)
-            replay_states = np.loadtxt(args.imitate_file, delimiter=',')
-            num_states = replay_states.shape[0]
+            while self.running:
+                self.set_space(self.start_state)
+                replay_states = np.loadtxt(args.imitate_file, delimiter=',')
+                num_states = replay_states.shape[0]
 
-            for i in range(num_states):
-                action = replay_states[i, -3:]
-                self.loop(action)
+                for i in range(num_states):
+                    action = replay_states[i, -3:]
+                    self.loop(action)
             
     def get_state(self):
         settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
