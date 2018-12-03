@@ -154,14 +154,17 @@ if __name__ == '__main__':
     # train on a dataset file
     parser.add_argument("--train", action="store_true",
                         help="train on a dataset")
-    parser.add_argument("--dataset")
+    parser.add_argument("--dataset",help="path to training dataset",
+                        default="data/full_dataset.csv")
     parser.add_argument("--visualize", action="store_true")
     parser.add_argument("--model-save",help="where to store trained model")
 
     # test using trained model
     parser.add_argument("--test", action="store_true",
                         help="test with trained model")
-    parser.add_argument("--model-load",help="where to load trained model")
-    parser.add_argument("--test-data",help="csv with test data")
+    parser.add_argument("--model-load",help="where to load trained model",
+                        default="model_best.pickle")
+    parser.add_argument("--test-data",help="csv with test data",
+                        default="data/imitate_0.csv")
     args = parser.parse_args()
     main(args)
