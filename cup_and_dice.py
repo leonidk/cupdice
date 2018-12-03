@@ -335,7 +335,9 @@ class CupDice:
                 self.e_down = False
             elif event.type == KEYUP and event.key == K_m:
                 self.use_mouse = not self.use_mouse
-
+        olv = self.cup_body.velocity
+        oav = self.cup_body.angular_velocity
+        
         speed = 100*self.args.gm
         key_ang_speed = 0.5*self.args.gm
         if action_vector is not None:
@@ -388,6 +390,11 @@ class CupDice:
             #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
+        if (self.args.r != 0):
+            nlv = self.cup_body.velocity
+            nav = self.cup_body.angular_velocity
+            self.dataset.append(self.get_state() + [nlv[0]-olv[0], nlv[1]-olv[1], nav-oav])
+
         self.space.reindex_shapes_for_body(self.cup_body)
         self.space.iterations = 25
 
@@ -399,8 +406,6 @@ class CupDice:
             self.space.step(dt/steps)
         if self.drawing:
             self.draw()
-        if (self.args.r != 0):
-            self.dataset.append(self.get_state())
 
         ### Tick clock and update fps in title
         self.clock.tick(fps)
