@@ -54,6 +54,8 @@ class CupDice:
         self.cost_std = [242.479,209.024,0.489,130.643,64.346,1.886,491.836,103.828,2.239,125.137,54.608,1.979,468.258,98.720,2.186,126.970,62.748,2.546,471.087,102.686,2.435,497.239,109.929,1.728]
         self.cost_std = [166.918,196.105,0.344,77.405,44.492,1.140,274.843,88.957,2.186,83.403,30.683,1.127,298.744,96.776,1.551,94.562,50.006,1.890,320.849,102.481,2.163,411.637,133.321,1.145,143.081,74.641,0.275]
         self.cost_std = np.array(self.cost_std)
+        self.cost_avg = [889.190,564.406,3.106,441.687,156.780,-0.032,4.804,2.866,0.038,452.212,165.340,-0.705,-2.379,4.799,-0.109,462.736,174.106,0.547,-9.477,6.885,0.152,-5.317,30.342,0.008,2.428,9.099,-0.012]
+        self.cost_avg = np.array(self.cost_avg)
         self.running = True
         self.drawing = True
         self.w, self.h = 900,700
@@ -131,6 +133,15 @@ class CupDice:
         print(self.start_state)
         print(self.get_state())
         print(np.linalg.norm((self.get_state()[3:]-np.squeeze(self.start_state)[3:])/self.cost_std[3:-3]))
+
+        if self.args.pv > 0.5:
+            xC = 100*self.args.gm # 100,100, 0.5
+            yC = 10*self.args.gm # 1500,20,5
+            aC = 0.5*self.args.gm
+        else:
+            xC = 800*self.args.gm # 100,100, 0.5
+            yC = 40*self.args.gm # 1500,20,5
+            aC = 2*self.args.gm
         if self.args.policy == 'play':
             while self.running:
                 self.loop()
@@ -142,25 +153,127 @@ class CupDice:
                 state = np.array(self.get_state()).reshape((1,-1))
                 action = model.pred(state)[0]
                 self.loop(action)
-        elif self.args.policy == 'cma' or self.args.policy == 'de':
+        elif self.args.policy == 'pg':
+            H = 32
+            W1 = (np.random.randn(24,H))/np.sqrt(24/2)*0.1
+            W2 = (np.random.randn(H,H))/np.sqrt(H/2)*0.1
+            W3 = (np.random.randn(H,3))/np.sqrt(H/2)*0.1
+
+            pl = self.args.pl
+            r_max = None
+            LR = 1e-6
+            g_array = np.ones(pl)
+            for i in range(pl):
+                g_array[i] = 0.99 ** float(i)
+            for runs in range(200):
+                rewards = 0
+                grad_W1 = np.zeros_like(W1)
+                grad_W2 = np.zeros_like(W2)
+                grad_W3= np.zeros_like(W3)
+
+                for i_episode in range(16):
+                    self.set_space(self.start_state)
+                    epi_grad_W1 = np.zeros([pl] + list(W1.shape))
+                    epi_grad_W2 = np.zeros([pl] + list(W2.shape))
+                    epi_grad_W3 = np.zeros([pl] + list(W3.shape))
+
+                    epi_rewards = np.zeros(pl)
+                    alpha = 0.05
+                    for t in range(pl):
+                        features = (np.array(self.get_state())-self.cost_avg[:-3])/self.cost_std[:-3]
+
+                        h1 = np.dot(features,W1)
+                        h2 = np.maximum(h1,alpha*h1)
+                        h3 = np.dot(h2,W2)
+                        h4 = np.maximum(h3,alpha*h3)
+                        h5 = np.dot(h4,W3)
+                        h6 = np.tanh(h5) + np.random.randn(3)/2
+                        x = (h6)
+                        grad_log = ((h5 - h6)*((1/2)**2))*(1-np.tanh(h5)**2)
+
+                        v = self.cup_body.velocity
+                        self.cup_body.velocity = (v[0]+x[0]*xC,v[1]+x[1]*yC)
+                        self.cup_body.angular_velocity += x[2]*aC
+
+
+                        fps = 30.
+                        dt = (1/fps)
+                        steps = 5
+                        for _ in range(steps):
+                            self.space.step(dt/steps)
+                        state = np.array(self.get_state()) 
+                        
+                        discount = (self.args.discount ** (pl-t-1))
+                        err_vec = (self.get_state()[3:]-np.squeeze(self.goal_state)[3:])#/self.cost_std[3:-3]
+                        #err_vec /= self.cost_std[3:-3]
+                        #state_err = np.linalg.norm(err_vec)
+                        state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+                        #reward = -np.linalg.norm((state - np.array(self.goal_state))/self.bounds_span)
+                        ##reward = -np.linalg.norm(np.array([state[3],state[9],state[15]]) - 200)
+                        reward = -discount*state_err
+                        epi_rewards[t] = reward
+                        rewards += reward
+
+            
+                        grad_log_W3 = np.dot(h4[:,np.newaxis],grad_log[:,np.newaxis].T)
+                        grad_log_h4 = np.dot(grad_log,W3.T)
+                        grad_log_h4[ h4 <= 0] = alpha*grad_log_h4[ h4 <= 0]
+                        grad_log_W2 = np.dot(h2[:,np.newaxis],grad_log_h4[:,np.newaxis].T)
+                        grad_log_h2 = np.dot(grad_log_h4,W2.T)
+                        grad_log_h2[ h2 <= 0] = alpha*grad_log_h2[ h2 <= 0]
+                        grad_log_W1 = np.dot(features[:,np.newaxis],grad_log_h2[:,np.newaxis].T)
+
+                        epi_grad_W3[t,:,:] = grad_log_W3
+                        epi_grad_W2[t,:,:] = grad_log_W2
+                        epi_grad_W1[t,:,:] = grad_log_W1
+                    scale = 1
+                    if r_max is None:
+                        r_max = np.zeros_like(epi_rewards)
+                        scale = 10
+                    epi_sums = np.zeros_like(epi_rewards)
+                    for t in range(pl):
+                        r = np.sum(epi_rewards[t:] * g_array[:pl-t])
+                        if scale == 10:
+                            r_max[t] = r
+                        grad_W3 += epi_grad_W3[t]*(r-r_max[t])
+                        grad_W2 += epi_grad_W2[t]*(r-r_max[t])
+                        grad_W1 += epi_grad_W1[t]*(r-r_max[t])
+                        r_max[t] = 0.99*r_max[t] + 0.01*r
+                        epi_sums[t] = r
+                #r_max = 0.9*r_max + 0.1*(rewards/64.0)
+
+                W1= W1 + LR*(grad_W1) 
+                W2= W2 + LR*(grad_W2)
+                W3= W3 + LR*(grad_W3)
+
+                print('R: {0:6.1f}\tB: {3:6.1f}\t\t|W1| {1:.3f} |W2| {2:.3f}'.format(epi_sums.sum(),np.linalg.norm(W1),np.linalg.norm(W2),r_max.sum()))
+            while self.running:
+                self.set_space(self.start_state)
+
+                for i in range(self.args.pl):
+                    features = (np.array(self.get_state())-self.cost_avg[:-3])/self.cost_std[:-3]
+
+                    h1 = np.dot(features,W1)
+                    h2 = np.maximum(h1,alpha*h1)
+                    h3 = np.dot(h2,W2)
+                    h4 = np.maximum(h3,alpha*h3)
+                    h5 = np.dot(h4,W3)
+                    h6 = np.tanh(h5) + np.random.randn(3)/2
+                    x = (h6)
+                    self.loop([x[0]*xC,x[1]*yC,x[2]*aC])
+        elif self.args.policy == 'cma' or self.args.policy == 'de' or self.args.policy == 'opt':
             policy_length = self.args.pl
-            if self.args.pv > 0.5:
-                xC = 100*self.args.gm # 100,100, 0.5
-                yC = 10*self.args.gm # 1500,20,5
-                aC = 0.5*self.args.gm
-            else:
-                xC = 800*self.args.gm # 100,100, 0.5
-                yC = 40*self.args.gm # 1500,20,5
-                aC = 2*self.args.gm
+
             feval_max = self.args.maxf
             def func(x):
                 err = 0
                 for n in range(self.args.n):
                     self.set_space(self.start_state)
-                    for i in range(policy_length):
+                    for i in range(policy_length+3):
                         v = self.cup_body.velocity
-                        self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
-                        self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
+                        if i < policy_length:
+                            self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
+                            self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
 
                         cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
                         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
@@ -169,10 +282,14 @@ class CupDice:
                         dt = (1/fps)
                         steps = 5
                         for _ in range(steps):
-                            self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
+                            #self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
                             self.space.step(dt/steps)
                         discount = (self.args.discount ** (policy_length-i-1))
-                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:-3])
+                        err_vec = (self.get_state()[3:]-np.squeeze(self.goal_state)[3:])#/self.cost_std[3:-3]
+                        #err_vec /= self.cost_std[3:-3]
+                        #state_err = np.linalg.norm(err_vec)
+                        state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+                        #print(i,state_err)
                         err += state_err * discount
 
                 new_state = self.get_state()
@@ -180,18 +297,25 @@ class CupDice:
             if self.args.policy == 'cma':
                 import cma
                 popsize = 4+int(3*np.log(3*policy_length))
-                es = cma.CMAEvolutionStrategy(np.zeros(policy_length*3),0.5,{'popsize': popsize, 'maxfevals':feval_max,'verb_log':0})
+                x0 = np.random.rand(3*policy_length)*2 - 1
+
+                es = cma.CMAEvolutionStrategy(x0,0.25,{'popsize': popsize, 'maxfevals':feval_max,'verb_log':0})
                 es.optimize(func)
 
                 print(es.result_pretty())
                 x = es.result.xbest
+            elif self.args.policy == 'opt':
+                import scipy.optimize as opt
+                x0 = np.random.rand(3*policy_length)*2 - 1
+                res = opt.basinhopping(func,x0,disp=True)
+                x = res.x
             else:
                 import scipy.optimize as opt
                 popsize = 15
                 maxiter = int(round(feval_max/(popsize*(3*policy_length))))
                 print(maxiter)
                 res = opt.differential_evolution(func,
-                                    bounds=[(-1,1) for _ in range(3*policy_length)],
+                                    bounds=[(-1,1) for _ in range(3*policy_length)], 
                                     maxiter=maxiter,polish=False,tol=0.001,popsize=popsize,
                                     disp=True)
                 x = res.x
@@ -212,13 +336,13 @@ class CupDice:
             while self.running:
                 if itr % policy_length == 0:
                     self.set_space(self.start_state)
-                    if itr > 0 and not saved:
-                        saved = False
+                    if itr > 0 and (saved == False):
+                        saved = True
                         np.savetxt(recording_name, np.array(self.dataset), delimiter=",")
                         self.dataset = []
                         self.recording = False
                 mi = itr % policy_length
-                self.loop(x[mi:mi+3] * np.array([xC,yC,aC]))
+                self.loop(x[3*mi:3*mi+3] * np.array([xC,yC,aC]))
                 itr += 1
         elif self.args.policy == 'replay':
             while self.running:
@@ -398,12 +522,16 @@ class CupDice:
             #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
             #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
-
+        #print(self.recording,len(self.dataset))
         if self.recording:
             nlv = self.cup_body.velocity
             nav = self.cup_body.angular_velocity
             self.dataset.append(self.get_state() + [nlv[0]-olv[0], nlv[1]-olv[1], nav-oav])
-
+        err_vec = (self.get_state()[3:]-np.squeeze(self.goal_state)[3:])#/self.cost_std[3:-3]
+        err_vec /= self.cost_std[3:-3]
+        state_err = np.linalg.norm(err_vec)
+        #state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+        #print(state_err)
         self.space.reindex_shapes_for_body(self.cup_body)
         self.space.iterations = 25
 
@@ -471,6 +599,6 @@ if __name__ == '__main__':
                         help="file to imitate")
     parser.add_argument("--model", type=str,default='model.pkl',
                         help="modefile to evaluate")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg'])
     args = parser.parse_args()
     main(args)
