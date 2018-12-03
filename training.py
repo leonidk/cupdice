@@ -67,7 +67,7 @@ def main(args):
     elif args.train:
         
         dataset = np.loadtxt(args.dataset, delimiter=',')
-        dataset = dataset[dataset[:,-1]!=0]
+        #dataset = dataset[dataset[:,-1]!=0]
         
         num_samples = dataset.shape[0]
         train_size = round(0.75 * num_samples)
