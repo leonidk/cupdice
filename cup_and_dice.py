@@ -320,23 +320,23 @@ class CupDice:
             v = self.cup_body.velocity
             self.cup_body.velocity = ( self.args.pv*v[0]+action_vector[0], self.args.pv*v[1]+action_vector[1])
             self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + action_vector[2]
-        else:
-            if self.left_down:
-                v = self.cup_body.velocity
-                self.cup_body.velocity = (v[0]-speed,v[1])
-            if self.right_down:
-                v = self.cup_body.velocity
-                self.cup_body.velocity = (v[0]+speed,v[1])
-            if self.up_down:
-                v = self.cup_body.velocity
-                self.cup_body.velocity = (v[0],v[1]+speed)
-            if self.down_down:
-                v = self.cup_body.velocity
-                self.cup_body.velocity = (v[0],v[1]-speed)
-            if self.e_down:
-                self.cup_body.angular_velocity -= key_ang_speed
-            if self.q_down:
-                self.cup_body.angular_velocity += key_ang_speed
+        if self.left_down:
+            v = self.cup_body.velocity
+            self.cup_body.velocity = (v[0]-speed,v[1])
+        if self.right_down:
+            v = self.cup_body.velocity
+            self.cup_body.velocity = (v[0]+speed,v[1])
+        if self.up_down:
+            v = self.cup_body.velocity
+            self.cup_body.velocity = (v[0],v[1]+speed)
+        if self.down_down:
+            v = self.cup_body.velocity
+            self.cup_body.velocity = (v[0],v[1]-speed)
+        if self.e_down:
+            self.cup_body.angular_velocity -= key_ang_speed
+        if self.q_down:
+            self.cup_body.angular_velocity += key_ang_speed
+        if self.args.policy == 'play':
             if not self.down_down and not self.up_down:
                 v = self.cup_body.velocity
                 self.cup_body.velocity = (v[0],0)
@@ -345,25 +345,25 @@ class CupDice:
                 self.cup_body.velocity = (0,v[1])
             if not self.q_down and not self.e_down:
                 self.cup_body.angular_velocity = 0
-            if self.use_mouse:
-                mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
+        if self.use_mouse:
+            mouse_position = pymunk.pygame_util.from_pygame( Vec2d(pygame.mouse.get_pos()), self.screen )
 
-                cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+            cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
 
-                cup_orientation =self.cup_body.angle + pi/2
-                mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
-                
-                angular_speed = 10
-                dist1 = mouse_to_cup_orientation - cup_orientation
-                #print([_ for _ in [self.cup_body.angle,cup_orientation,mouse_to_cup_orientation,self.cup_body.angle]])
-                dist2 = dist1 + 2*pi
-                dist3 = dist1 - 2*pi
-                dists = [dist1,dist2]
-                dists = sorted([(abs(_),_) for _ in dists])
-                self.cup_body.angular_velocity += dists[0][1] * angular_speed
-                #print(dists[0][1])
-                #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
-                #print(dist1,dist2,dist3)
+            cup_orientation =self.cup_body.angle + pi/2
+            mouse_to_cup_orientation = (mouse_position - cup_cog_world).angle
+            
+            angular_speed = 10
+            dist1 = mouse_to_cup_orientation - cup_orientation
+            #print([_ for _ in [self.cup_body.angle,cup_orientation,mouse_to_cup_orientation,self.cup_body.angle]])
+            dist2 = dist1 + 2*pi
+            dist3 = dist1 - 2*pi
+            dists = [dist1,dist2]
+            dists = sorted([(abs(_),_) for _ in dists])
+            self.cup_body.angular_velocity += dists[0][1] * angular_speed
+            #print(dists[0][1])
+            #print(math.fmod(mouse_to_cup_orientation,pi),math.fmod(cup_orientation,pi),mouse_to_cup_orientation,dist1,dist2,dist3)
+            #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
         self.space.reindex_shapes_for_body(self.cup_body)
