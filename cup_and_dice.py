@@ -208,17 +208,8 @@ class CupDice:
             replay_states = np.loadtxt(args.imitate_file, delimiter=',')
             num_states = replay_states.shape[0]
 
-            for i in range(num_states - 1):
-                action = replay_states[i + 1, 21:] - replay_states[i, 21:]
-
-                if action[0] != 0:
-                    action[0] = action[0] / abs(action[0]) * 100
-
-                if action[1] != 0:
-                    action[1] = action[1] / abs(action[1]) * 100
-                
-                action[2] *= 1
-
+            for i in range(num_states):
+                action = replay_states[i, -3:]
                 self.loop(action)
             
     def get_state(self):
@@ -402,7 +393,7 @@ class CupDice:
         dt = (1/fps)
         steps = 5
         for _ in range(steps):
-            self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
+            #self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
             self.space.step(dt/steps)
         if self.drawing:
             self.draw()
