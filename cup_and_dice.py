@@ -66,7 +66,7 @@ class CupDice:
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
-        self.space.gravity = (0.0, -1600*args.gm)
+        self.space.gravity = (0.0, -400*args.gm)
         # self.space.gravity = (0.0, 0.0)
         self.space.sleep_time_threshold = 0.3
 
