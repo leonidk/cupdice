@@ -128,6 +128,13 @@ class CupDice:
         self.down_down = False
         self.q_down = False
         self.e_down = False
+
+        self.set_space(self.start_state)
+        self.true_start = self.get_state()
+        self.set_space(self.goal_state)
+        self.true_goal = self.get_state()
+
+
     def run(self):
         self.set_space(self.start_state)
         print(self.start_state)
@@ -153,6 +160,101 @@ class CupDice:
                 state = np.array(self.get_state()).reshape((1,-1))
                 action = model.pred(state)[0]
                 self.loop(action)
+        elif self.args.policy == 'rrt':
+            policy_length = self.args.pl
+            def step_from_to(s1,s2):
+                def func(x):
+                    err = 0
+                    for n in range(self.args.n):
+                        self.set_space(s1)
+                        for i in range(policy_length):
+                            v = self.cup_body.velocity
+                            self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
+                            self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
+
+                            cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+                            cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
+
+                            fps = 30.
+                            dt = (1/fps)
+                            steps = 5
+                            for _ in range(steps):
+                                self.space.step(dt/steps)
+                            discount = (self.args.discount ** (policy_length-i-1))
+                            err_vec = (self.get_state()[3:]-np.squeeze(s2)[3:])/self.cost_std[3:-3]
+                            state_err = np.linalg.norm(err_vec)
+                            #state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+                            err += state_err * discount
+
+                    return err
+                import cma
+                popsize = 4+int(3*np.log(3*policy_length))
+                x0 = np.zeros(3*policy_length)
+                x0 = np.random.rand(3*policy_length)*2 - 1
+
+                es = cma.CMAEvolutionStrategy(x0,0.25,{'verbose':-9,'popsize': popsize, 'maxfevals':self.args.maxf,'verb_log':0})
+                es.optimize(func)
+
+                x = es.result.xbest
+                self.set_space(s1)
+                for i in range(policy_length):
+                    v = self.cup_body.velocity
+                    self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
+                    self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
+
+                    fps = 30.
+                    dt = (1/fps)
+                    steps = 5
+                    for _ in range(steps):
+                        self.space.step(dt/steps)
+                new_state = np.array(self.get_state())
+                return new_state, x
+            nodes = np.array([self.start_state])[:np.newaxis]
+            connections = np.array([0])
+            forces = np.zeros((1,3*self.args.pl))
+            for i in range(10000):
+                rand = (np.random.rand(1,24)*3*self.cost_std[:-3] + self.cost_avg[:-3]) if np.random.rand() > 0.25 else np.array([self.true_goal])[:np.newaxis]
+
+                err_vec = ((nodes-rand)[:,3:])/self.cost_std[3:-3]
+                #state_err = np.linalg.norm(err_vec)
+                dists = np.linalg.norm(np.vstack([err_vec[:,0],err_vec[:,1],err_vec[:,6],err_vec[:,7],err_vec[:,12],err_vec[:,13]]).T,axis=1)
+                #print(dists)
+                closest_idx = np.argmin(dists)
+                closest = nodes[closest_idx]
+
+                new_node,sequence = step_from_to(closest,rand)
+
+                if np.linalg.norm(new_node - self.true_goal) > 0.01:
+                    print(nodes.shape,new_node[:,np.newaxis].T.shape,closest_idx,np.linalg.norm((nodes-np.array([self.true_goal])[:np.newaxis])[:,3:]/self.cost_std[3:-3],axis=1).min())
+                    #print(np.linalg.norm((nodes-np.array([self.goal_state])[:np.newaxis])/self.cost_std[:-3],axis=1))
+                    nodes = np.append(nodes,new_node[:,np.newaxis].T,0)
+                    connections  = np.append(connections,closest_idx)
+                    forces = np.append(forces,sequence[:,np.newaxis].T,0)
+                else:
+                    import pickle
+                    pickle.dump( nodes, open( "nodes.p", "wb" ) )
+                    pickle.dump( connections, open( "connections.p", "wb" ) )
+                    pickle.dump( sequence, open( "sequence.p", "wb" ) )
+                    break
+                if True and i > 0 and i % 5 == 0:
+                    while self.running:
+                    #print(nodes.shape,connections.shape,forces.shape)
+                    #print(nodes,connections,forces)
+
+                        self.set_space(self.start_state)
+                        rand = np.array([self.true_goal])[:np.newaxis]
+                        dists = np.linalg.norm(nodes-rand,axis=1)
+                        closest_idx = np.argmin(dists)
+                        closest = nodes[closest_idx]
+                        path_node = closest_idx
+                        final_nodes = [closest]
+                        while path_node != 0:
+                            for i in range(self.args.pl):
+                                self.loop(forces[path_node][3*i:3*i+3])
+                            path_node = connections[path_node]
+                            final_nodes.append(nodes[path_node])
+                        final_nodes.append(nodes[0])
+                        final_nodes = list(reversed(final_nodes))
         elif self.args.policy == 'pg':
             H = 32
             W1 = (np.random.randn(24,H))/np.sqrt(24/2)*0.1
@@ -204,7 +306,7 @@ class CupDice:
                         state = np.array(self.get_state()) 
                         
                         discount = (self.args.discount ** (pl-t-1))
-                        err_vec = (self.get_state()[3:]-np.squeeze(self.goal_state)[3:])#/self.cost_std[3:-3]
+                        err_vec = (self.get_state()[3:]-np.squeeze(self.true_goal)[3:])#/self.cost_std[3:-3]
                         #err_vec /= self.cost_std[3:-3]
                         #state_err = np.linalg.norm(err_vec)
                         state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
@@ -285,10 +387,10 @@ class CupDice:
                             #self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
                             self.space.step(dt/steps)
                         discount = (self.args.discount ** (policy_length-i-1))
-                        err_vec = (self.get_state()[3:]-np.squeeze(self.goal_state)[3:])#/self.cost_std[3:-3]
-                        #err_vec /= self.cost_std[3:-3]
-                        #state_err = np.linalg.norm(err_vec)
-                        state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+                        err_vec = (self.get_state()[3:]-np.squeeze(self.true_goal)[3:])#/self.cost_std[3:-3]
+                        err_vec /= self.cost_std[3:-3]
+                        state_err = np.linalg.norm(err_vec)
+                        #state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
                         #print(i,state_err)
                         err += state_err * discount
 
@@ -599,6 +701,6 @@ if __name__ == '__main__':
                         help="file to imitate")
     parser.add_argument("--model", type=str,default='model.pkl',
                         help="modefile to evaluate")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg','rrt'])
     args = parser.parse_args()
     main(args)

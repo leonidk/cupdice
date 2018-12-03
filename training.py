@@ -75,13 +75,16 @@ def main(args):
             # first 75% of dataset for train
             train_data = state[0:train_size]
             train_label = velocity_diff[0:train_size,:]
-        else:
+        elif True:
             train_data, test_data, train_label, test_label = model_selection.train_test_split(state, velocity_diff, random_state=42)
+        else:
+            train_data, test_data = state, state
+            test_label, train_label = velocity_diff,velocity_diff
 
-        #regressor = multioutput.MultiOutputRegressor(svm.SVR())
+        regressor = multioutput.MultiOutputRegressor(svm.SVR())
         #regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
         #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=12,verbose=1)
-        regressor = multioutput.MultiOutputRegressor(linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=2000, tol=1e-3))
+        #regressor = multioutput.MultiOutputRegressor(linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=2000, tol=1e-4))
         #regressor = multioutput.MultiOutputRegressor(xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False))
         regressor.fit(train_data,train_label) 
 
