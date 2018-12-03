@@ -52,6 +52,7 @@ class CupDice:
         #self.start_state = [400,190,pi, 408,125,0,0,0,0, 451,125,0,0,0,0, 493,125,0,0,0,0, 0,0,0]
         #self.goal_state  = [400,190,pi, 451,125,0,0,0,0, 451,165,0,0,0,0, 451,205,0,0,0,0, 0,0,0]
         self.cost_std = [242.479,209.024,0.489,130.643,64.346,1.886,491.836,103.828,2.239,125.137,54.608,1.979,468.258,98.720,2.186,126.970,62.748,2.546,471.087,102.686,2.435,497.239,109.929,1.728]
+        self.cost_std = [166.918,196.105,0.344,77.405,44.492,1.140,274.843,88.957,2.186,83.403,30.683,1.127,298.744,96.776,1.551,94.562,50.006,1.890,320.849,102.481,2.163,411.637,133.321,1.145,143.081,74.641,0.275]
         self.cost_std = np.array(self.cost_std)
         self.running = True
         self.drawing = True
@@ -62,6 +63,7 @@ class CupDice:
         self.cup_body = None
         self.args = args
         self.dataset = []
+        self.recording = (self.args.r != 0)
 
         ### Init pymunk and create space
         self.space = pymunk.Space()
@@ -128,7 +130,7 @@ class CupDice:
         self.set_space(self.start_state)
         print(self.start_state)
         print(self.get_state())
-        print(np.linalg.norm((self.get_state()[3:-3]-np.squeeze(self.start_state)[3:-3])/self.cost_std[3:-3]))
+        print(np.linalg.norm((self.get_state()[3:]-np.squeeze(self.start_state)[3:])/self.cost_std[3:-3]))
         if self.args.policy == 'play':
             while self.running:
                 self.loop()
@@ -170,7 +172,7 @@ class CupDice:
                             self.cup_body.apply_force_at_world_point(cup_body_reverse_gravity,cup_cog_world)
                             self.space.step(dt/steps)
                         discount = (self.args.discount ** (policy_length-i-1))
-                        state_err = np.linalg.norm((self.get_state()[3:-3]-np.squeeze(self.goal_state)[3:-3])/self.cost_std[3:-3])
+                        state_err = np.linalg.norm((self.get_state()[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:-3])
                         err += state_err * discount
 
                 new_state = self.get_state()
@@ -195,10 +197,26 @@ class CupDice:
                 x = res.x
             print(func(np.zeros(policy_length*3)),func(x))
             self.set_space(self.start_state)
+            
+            base_name = "{}_{}.csv"
+            i = 0
+            while True:
+                if not os.path.exists(base_name.format(self.args.policy,i)):
+                    break
+                i+=1
+            recording_name = base_name.format(self.args.policy,i)
             itr = 0
+            self.dataset = []
+            saved = False
+            self.recording = True
             while self.running:
                 if itr % policy_length == 0:
                     self.set_space(self.start_state)
+                    if itr > 0 and not saved:
+                        saved = False
+                        np.savetxt(recording_name, np.array(self.dataset), delimiter=",")
+                        self.dataset = []
+                        self.recording = False
                 mi = itr % policy_length
                 self.loop(x[mi:mi+3] * np.array([xC,yC,aC]))
                 itr += 1
@@ -227,7 +245,7 @@ class CupDice:
         return settings
 
     def save_dataset(self):
-        if (self.args.r != 0):
+        if self.recording:
             base_name = "imitate_{}.csv"
             i = 0
             while True:
@@ -381,7 +399,7 @@ class CupDice:
             #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
 
-        if (self.args.r != 0):
+        if self.recording:
             nlv = self.cup_body.velocity
             nav = self.cup_body.angular_velocity
             self.dataset.append(self.get_state() + [nlv[0]-olv[0], nlv[1]-olv[1], nav-oav])
