@@ -16,6 +16,8 @@ import os
 import math
 import pickle
 
+from pdb import set_trace as st
+
 class ImitationModel:
     def __init__(self,model_path):
         with open(model_path, 'rb') as f:
@@ -201,6 +203,23 @@ class CupDice:
                 mi = itr % policy_length
                 self.loop(x[mi:mi+3] * np.array([xC,yC,aC]))
                 itr += 1
+        elif self.args.policy == 'replay':
+            self.set_space(self.start_state)
+            replay_states = np.loadtxt(args.imitate_file, delimiter=',')
+            num_states = replay_states.shape[0]
+
+            for i in range(num_states - 1):
+                action = replay_states[i + 1, 21:] - replay_states[i, 21:]
+
+                if action[0] != 0:
+                    action[0] = action[0] / abs(action[0]) * 100
+
+                if action[1] != 0:
+                    action[1] = action[1] / abs(action[1]) * 100
+                
+                action[2] *= 1
+
+                self.loop(action)
             
     def get_state(self):
         settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
@@ -434,8 +453,10 @@ if __name__ == '__main__':
                         help="length of learned policy")
     parser.add_argument("--r", action="store_true",
                         help="record data")
+    parser.add_argument("--imitate-file", default="data/imitate_0.csv",
+                        help="file to imitate")
     parser.add_argument("--model", type=str,default='model.pkl',
                         help="modefile to evaluate")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay'])
     args = parser.parse_args()
     main(args)
