@@ -1,14 +1,37 @@
-from sklearn import svm, metrics
+from sklearn import svm, metrics, linear_model, ensemble, neural_network
 import numpy as np
 from pdb import set_trace as st
 import argparse
 import os
 import fnmatch
+import matplotlib.pyplot as plt
+import xgboost
+import pickle
+
+class ImitationModel:
+    def __init__(self,model_path):
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+
+        self.regressor = model[0]
+        self.dataset_mean = model[1]
+        self.dataset_std = model[2]
+
+    def pred(self, state):
+        # input: N x 24 state
+        # output: N x 3 velocity diffs
+
+        state_nmlz = (state - self.dataset_mean[0:24]) / self.dataset_std[0:24]
+        velocity_diff_pred_nmlz = self.regressor.predict(state_nmlz)
+
+        velocity_diff_pred = \
+            velocity_diff_pred_nmlz * self.dataset_std[24:27] + self.dataset_mean[24:27]
+
+        return velocity_diff_pred
 
 def main(args):
     if args.create:
         datalist = []
-        data_dim = 0
         data_len = 0
 
         for fname in os.listdir(args.datadir):
@@ -41,32 +64,76 @@ def main(args):
         np.savetxt(args.datadir + args.var_save, variances, delimiter=",")
 
     elif args.train:
-        dataset = np.loadtxt(args.dataset, delimiter=',')
-        state = dataset[:,0:24]
-        velocity_diff = dataset[:,24:]
-
-        test_sz = round(0.25 * dataset.shape[0])
-        test_data = state[-test_sz:,:]
-        test_label = velocity_diff[-test_sz:,2]
-
-        train_size = round(0.75 * dataset.shape[0])
-
-        clf = svm.SVR(C=10)
-        clf.fit(state[0:train_size],velocity_diff[0:train_size,2])
-        clf_pred = clf.predict(test_data)
-        clf_err = metrics.mean_squared_error(clf_pred,test_label)
-
-        st()
-
-
-
-
         
+        dataset = np.loadtxt(args.dataset, delimiter=',')
+        dataset = dataset[dataset[:,-1]!=0]
+        
+        num_samples = dataset.shape[0]
+        train_size = round(0.75 * num_samples)
+        test_sz = round(0.25 * num_samples)
+        dataset_means = np.mean(dataset[:train_size],axis=0)
+        dataset_std = np.std(dataset[:train_size],axis=0)
 
+        dataset_nmlz = (dataset-dataset_means)/dataset_std
 
+        state = dataset_nmlz[:,0:24]
+        velocity_diff = dataset_nmlz[:,24:]
 
+        # last 25% of dataset for test
+        test_data = state[-test_sz:]
+        test_label = velocity_diff[-test_sz:,:]
+
+        # first 75% of dataset for train
+        train_data = state[0:train_size]
+        train_label = velocity_diff[0:train_size,:]
+
+        # regressor = svm.SVR(C=1)
+        regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
+        #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=8,verbose=1,n_jobs=-1)
+        #regressor = linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=1000, tol=1e-3)
+        #regressor = xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False)
+        regressor.fit(train_data,train_label) 
+
+        test_pred = regressor.predict(test_data)
+
+        print(test_pred.shape,test_label.shape)
+        err = np.sum(np.abs(test_pred - test_label))
+
+        print(err)
+
+        model = [regressor, dataset_means, dataset_std]
+
+        with open(args.model_save, 'wb') as f:
+            pickle.dump(model, f)
+
+        # err = abs(test_pred - test_label) / np.mean(abs(test_label))
+        # err_hist = np.histogram(err, bins='auto')
+
+        # success_curve = np.cumsum(err_hist[0]) / test_sz
+
+        # err_thresh = 0.1
+        # err_ind = err_hist[1][1:] < err_thresh
+        # success_ratio = np.sum(err_hist[0][err_ind]) / test_sz
+
+        # print(success_ratio)
+
+        # if args.visualize:
+        #     plt.figure()
+        #     plt.hist(err,bins='auto')
+        #     plt.title('test error normalized by mean label mag.')
+
+        #     plt.figure()
+        #     plt.plot(err_hist[1][1:], success_curve)
+        #     plt.title('success curve on test data')
+
+        #     plt.show()   
     
-    
+    if args.test:
+        # run:
+        # python3 training.py --test --test-data data/imitate_0.csv --model-load models/nn1.pickle
+        im = ImitationModel(args.model_load)
+        testdata = np.loadtxt(args.test_data, delimiter=',')
+        test_pred = im.pred(testdata)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -82,6 +149,13 @@ if __name__ == '__main__':
     parser.add_argument("--train", action="store_true",
                         help="train on a dataset")
     parser.add_argument("--dataset")
+    parser.add_argument("--visualize", action="store_true")
+    parser.add_argument("--model-save",help="where to store trained model")
 
+    # test using trained model
+    parser.add_argument("--test", action="store_true",
+                        help="test with trained model")
+    parser.add_argument("--model-load",help="where to load trained model")
+    parser.add_argument("--test-data",help="csv with test data")
     args = parser.parse_args()
     main(args)
