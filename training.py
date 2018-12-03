@@ -34,32 +34,21 @@ def main(args):
     if args.create:
         datalist = []
         data_len = 0
-
-        for fname in os.listdir(args.datadir):
+        data_files = 0
+        for fname in sorted(os.listdir(args.datadir)):
             if fnmatch.fnmatch(fname, "imitate*.csv"):
                 f_data = np.loadtxt(os.path.join(args.datadir,fname) ,delimiter=',')
                 datalist.append(f_data)
                 data_len += f_data.shape[0]
+                data_files += 1
 
-        data_dim = datalist[0].shape[1]
-
-        dataset = np.zeros((data_len, 27))
+        dataset = []
         variances = np.zeros((24))
 
-        row_ptr = 0
         for d in datalist:
-            velocity_diff = d[1: , 21:] - d[0:-1 , 21:]
-            states = d[1: , 0:21]
-            velocities = d[0:-1 , 21:]
-
-            num_rows = d.shape[0] - 1
-
-            dataset[row_ptr : row_ptr + num_rows, 0:21] = states
-            dataset[row_ptr : row_ptr + num_rows, 21:24] = velocities
-            dataset[row_ptr : row_ptr + num_rows, 24:] = velocity_diff
-
-            row_ptr += num_rows
-
+            dataset.append(
+                np.hstack([d[1:, :21], d[0:-1, 21:], d[1:, 21:] - d[0:-1, 21:]  ]) )
+        dataset = np.vstack(dataset)
         variances = np.var(dataset[:,0:24],axis=0)
         np.savetxt(os.path.join(args.datadir , args.data_save), dataset, delimiter=",")
         np.savetxt(os.path.join(args.datadir , args.var_save), variances, delimiter=",")
@@ -71,18 +60,19 @@ def main(args):
         
         num_samples = dataset.shape[0]
         train_size = round(0.75 * num_samples)
-        test_sz = round(0.25 * num_samples)
         dataset_means = np.mean(dataset[:train_size],axis=0)
-        dataset_std = np.std(dataset[:train_size],axis=0)
-
+        dataset_std =np.std(dataset[:train_size],axis=0)
+        
+        #dataset_means *= 0
+        #dataset_std = np.ones_like(dataset_std)
         dataset_nmlz = (dataset-dataset_means)/dataset_std
 
         state = dataset_nmlz[:,0:24]
         velocity_diff = dataset_nmlz[:,24:]
 
         # last 25% of dataset for test
-        test_data = state[-test_sz:]
-        test_label = velocity_diff[-test_sz:,:]
+        test_data = state[train_size:]
+        test_label = velocity_diff[train_size:,:]
 
         # first 75% of dataset for train
         train_data = state[0:train_size]
@@ -92,16 +82,19 @@ def main(args):
         #regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
         #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=8,verbose=1,n_jobs=-1)
         #regressor = linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=1000, tol=1e-3)
-        regressor = multioutput.MultiOutputRegressor(xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False))
+        regressor = multioutput.MultiOutputRegressor(linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=2000, tol=1e-3))
+        #regressor = multioutput.MultiOutputRegressor(xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False))
         regressor.fit(train_data,train_label) 
 
         test_pred = regressor.predict(test_data)
-
+        train_pred = regressor.predict(train_data)
         print(test_pred.shape,test_label.shape)
-        err = np.sum(np.abs(test_pred - test_label))
+        err = np.sum(np.abs(test_pred - test_label)) + np.sum(np.abs(train_pred - train_label)) 
+        np.savetxt('ever.csv',np.vstack([np.abs(train_pred - train_label),np.abs(test_pred - test_label)] ), delimiter=",")
 
-        print(err)
-
+        print(err,train_pred.shape[0] + test_pred.shape[0])
+        #print(train_pred[117]*dataset_std[-3:] + dataset_means[-3:])
+        #print(train_data[117]*dataset_std[:-3] + dataset_means[:-3])
         model = [regressor, dataset_means, dataset_std]
 
         with open(args.model_save, 'wb') as f:
@@ -133,13 +126,24 @@ def main(args):
         # run:
         # python3 training.py --test --test-data data/imitate_0.csv --model-load models/nn1.pickle
         im = ImitationModel(args.model_load)
-        testdata = np.loadtxt(args.test_data, delimiter=',')
-        test_pred = im.pred(testdata)
         err = 0
-        i = testdata.shape[0]
-        for i in range(0,i-1):
-            err += np.linalg.norm((testdata[i+1,-3:]-testdata[i,-3:]) - test_pred[i])
-        print(err)
+        nums = 0
+        errs = []
+        for fname in sorted(os.listdir(args.datadir)):
+            if fnmatch.fnmatch(fname, "imitate*.csv"):
+                d = np.loadtxt(os.path.join(args.datadir,fname) ,delimiter=',')
+                testdata = np.hstack([d[1:, :21], d[0:-1, 21:] ])
+                diffs = d[1:, 21:] - d[0:-1, 21:]
+                test_pred = im.pred(testdata)
+                i = testdata.shape[0]
+                for i in range(i):
+                    nums += 1
+                    e = np.abs((diffs[i] - test_pred[i])/im.dataset_std[24:] ).sum()
+                    errs.append(e)
+                    err += e
+        np.savetxt('never.csv', errs, delimiter=",")
+
+        print(err,nums)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -147,9 +151,9 @@ if __name__ == '__main__':
     # create dataset file
     parser.add_argument("--create", action="store_true",
                         help="read data files and save to single large numpy array")
-    parser.add_argument("--datadir", help="data directory")
-    parser.add_argument("--data-save",help="where to save big np data")
-    parser.add_argument("--var-save",help="where to save variances")
+    parser.add_argument("--datadir", help="data directory",default="data")
+    parser.add_argument("--data-save",help="where to save big np data",default="full_dataset.csv")
+    parser.add_argument("--var-save",help="where to save variances",default="var_dataset.csv")
 
     # train on a dataset file
     parser.add_argument("--train", action="store_true",
@@ -157,14 +161,12 @@ if __name__ == '__main__':
     parser.add_argument("--dataset",help="path to training dataset",
                         default="data/full_dataset.csv")
     parser.add_argument("--visualize", action="store_true")
-    parser.add_argument("--model-save",help="where to store trained model")
+    parser.add_argument("--model-save",help="where to store trained model",default='model.pkl')
 
     # test using trained model
     parser.add_argument("--test", action="store_true",
                         help="test with trained model")
     parser.add_argument("--model-load",help="where to load trained model",
-                        default="model_best.pickle")
-    parser.add_argument("--test-data",help="csv with test data",
-                        default="data/imitate_0.csv")
+                        default="model.pkl")
     args = parser.parse_args()
     main(args)
