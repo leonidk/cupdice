@@ -1,4 +1,4 @@
-from sklearn import svm, metrics, linear_model, ensemble, neural_network
+from sklearn import svm, metrics, linear_model, ensemble, neural_network, multioutput
 import numpy as np
 from pdb import set_trace as st
 import argparse
@@ -7,6 +7,7 @@ import fnmatch
 import matplotlib.pyplot as plt
 import xgboost
 import pickle
+
 
 class ImitationModel:
     def __init__(self,model_path):
@@ -36,7 +37,7 @@ def main(args):
 
         for fname in os.listdir(args.datadir):
             if fnmatch.fnmatch(fname, "imitate*.csv"):
-                f_data = np.loadtxt(args.datadir + fname,delimiter=',')
+                f_data = np.loadtxt(os.path.join(args.datadir,fname) ,delimiter=',')
                 datalist.append(f_data)
                 data_len += f_data.shape[0]
 
@@ -60,8 +61,8 @@ def main(args):
             row_ptr += num_rows
 
         variances = np.var(dataset[:,0:24],axis=0)
-        np.savetxt(args.datadir + args.data_save, dataset, delimiter=",")
-        np.savetxt(args.datadir + args.var_save, variances, delimiter=",")
+        np.savetxt(os.path.join(args.datadir , args.data_save), dataset, delimiter=",")
+        np.savetxt(os.path.join(args.datadir , args.var_save), variances, delimiter=",")
 
     elif args.train:
         
@@ -88,10 +89,10 @@ def main(args):
         train_label = velocity_diff[0:train_size,:]
 
         # regressor = svm.SVR(C=1)
-        regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
+        #regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
         #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=8,verbose=1,n_jobs=-1)
         #regressor = linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=1000, tol=1e-3)
-        #regressor = xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False)
+        regressor = multioutput.MultiOutputRegressor(xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False))
         regressor.fit(train_data,train_label) 
 
         test_pred = regressor.predict(test_data)
@@ -134,6 +135,11 @@ def main(args):
         im = ImitationModel(args.model_load)
         testdata = np.loadtxt(args.test_data, delimiter=',')
         test_pred = im.pred(testdata)
+        err = 0
+        i = testdata.shape[0]
+        for i in range(0,i-1):
+            err += np.linalg.norm((testdata[i+1,-3:]-testdata[i,-3:]) - test_pred[i])
+        print(err)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
