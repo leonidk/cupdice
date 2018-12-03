@@ -14,13 +14,28 @@ import argparse
 import sys
 import os
 import math
+import pickle
 
-class TimePolicy:
-    def __init__(self,actions):
-        self.N = actions.shape[0]
-        self.actions = actions
-    def action(self,timestep,state):
-        return self.actions[timestep % self.N]
+class ImitationModel:
+    def __init__(self,model_path):
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+
+        self.regressor = model[0]
+        self.dataset_mean = model[1]
+        self.dataset_std = model[2]
+
+    def pred(self, state):
+        # input: N x 24 state
+        # output: N x 3 velocity diffs
+
+        state_nmlz = (state - self.dataset_mean[0:24]) / self.dataset_std[0:24]
+        velocity_diff_pred_nmlz = self.regressor.predict(state_nmlz)
+
+        velocity_diff_pred = \
+            velocity_diff_pred_nmlz * self.dataset_std[24:27] + self.dataset_mean[24:27]
+
+        return velocity_diff_pred
 
 
 class CupDice:
@@ -113,6 +128,14 @@ class CupDice:
         if self.args.policy == 'play':
             while self.running:
                 self.loop()
+        elif self.args.policy == 'model':
+            model = ImitationModel(self.args.model)
+            self.set_space(self.start_state)
+            itr = 0
+            while self.running:
+                state = np.array(self.get_state()).reshape((1,-1))
+                action = model.pred(state)[0]
+                self.loop(action)
         elif self.args.policy == 'cma' or self.args.policy == 'de':
             policy_length = self.args.pl
             if self.args.pv > 0.5:
@@ -408,6 +431,8 @@ if __name__ == '__main__':
                         help="length of learned policy")
     parser.add_argument("--r", action="store_true",
                         help="record data")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de'])
+    parser.add_argument("--model", type=str,default='model.pkl',
+                        help="modefile to evaluate")
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model'])
     args = parser.parse_args()
     main(args)
