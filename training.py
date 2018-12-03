@@ -1,4 +1,4 @@
-from sklearn import svm, metrics, linear_model, ensemble, neural_network, multioutput
+from sklearn import svm, metrics, linear_model, ensemble, neural_network, multioutput, model_selection
 import numpy as np
 from pdb import set_trace as st
 import argparse
@@ -22,11 +22,11 @@ class ImitationModel:
         # input: N x 24 state
         # output: N x 3 velocity diffs
 
-        state_nmlz = (state - self.dataset_mean[0:24]) / self.dataset_std[0:24]
+        state_nmlz = (state - self.dataset_mean[:-3]) / self.dataset_std[:-3]
         velocity_diff_pred_nmlz = self.regressor.predict(state_nmlz)
 
         velocity_diff_pred = \
-            velocity_diff_pred_nmlz * self.dataset_std[24:27] + self.dataset_mean[24:27]
+            velocity_diff_pred_nmlz * self.dataset_std[-3:] + self.dataset_mean[-3:]
 
         return velocity_diff_pred
 
@@ -43,15 +43,12 @@ def main(args):
                 data_files += 1
 
         dataset = []
-        variances = np.zeros((24))
-
         for d in datalist:
-            dataset.append(
-                np.hstack([d[1:, :21], d[0:-1, 21:], d[1:, 21:] - d[0:-1, 21:]  ]) )
+            dataset.append(d)
         dataset = np.vstack(dataset)
-        variances = np.var(dataset[:,0:24],axis=0)
+        stds = np.std(dataset,axis=0)
         np.savetxt(os.path.join(args.datadir , args.data_save), dataset, delimiter=",")
-        np.savetxt(os.path.join(args.datadir , args.var_save), variances, delimiter=",")
+        np.savetxt(os.path.join(args.datadir , args.var_save), stds, delimiter=",")
 
     elif args.train:
         
@@ -61,27 +58,29 @@ def main(args):
         num_samples = dataset.shape[0]
         train_size = round(0.75 * num_samples)
         dataset_means = np.mean(dataset[:train_size],axis=0)
-        dataset_std =np.std(dataset[:train_size],axis=0)
+        dataset_std = np.std(dataset[:train_size],axis=0)
         
         #dataset_means *= 0
         #dataset_std = np.ones_like(dataset_std)
         dataset_nmlz = (dataset-dataset_means)/dataset_std
 
-        state = dataset_nmlz[:,0:24]
-        velocity_diff = dataset_nmlz[:,24:]
+        state = dataset_nmlz[:,:-3]
+        velocity_diff = dataset_nmlz[:,-3:]
 
         # last 25% of dataset for test
-        test_data = state[train_size:]
-        test_label = velocity_diff[train_size:,:]
+        if False:
+            test_data = state[train_size:]
+            test_label = velocity_diff[train_size:,:]
 
-        # first 75% of dataset for train
-        train_data = state[0:train_size]
-        train_label = velocity_diff[0:train_size,:]
+            # first 75% of dataset for train
+            train_data = state[0:train_size]
+            train_label = velocity_diff[0:train_size,:]
+        else:
+            train_data, test_data, train_label, test_label = model_selection.train_test_split(state, velocity_diff, random_state=42)
 
-        # regressor = svm.SVR(C=1)
+        #regressor = multioutput.MultiOutputRegressor(svm.SVR())
         #regressor = neural_network.MLPRegressor((16,16,16,16,16),max_iter=100,solver='adam',verbose=True)
-        #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=8,verbose=1,n_jobs=-1)
-        #regressor = linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=1000, tol=1e-3)
+        #regressor = ensemble.ExtraTreesRegressor(8,criterion='mae',max_depth=12,verbose=1)
         regressor = multioutput.MultiOutputRegressor(linear_model.SGDRegressor(loss='epsilon_insensitive',max_iter=2000, tol=1e-3))
         #regressor = multioutput.MultiOutputRegressor(xgboost.XGBRegressor(max_depth=12,n_estimators=100,silent=False))
         regressor.fit(train_data,train_label) 
@@ -90,7 +89,6 @@ def main(args):
         train_pred = regressor.predict(train_data)
         print(test_pred.shape,test_label.shape)
         err = np.sum(np.abs(test_pred - test_label)) + np.sum(np.abs(train_pred - train_label)) 
-        np.savetxt('ever.csv',np.vstack([np.abs(train_pred - train_label),np.abs(test_pred - test_label)] ), delimiter=",")
 
         print(err,train_pred.shape[0] + test_pred.shape[0])
         #print(train_pred[117]*dataset_std[-3:] + dataset_means[-3:])
@@ -132,17 +130,14 @@ def main(args):
         for fname in sorted(os.listdir(args.datadir)):
             if fnmatch.fnmatch(fname, "imitate*.csv"):
                 d = np.loadtxt(os.path.join(args.datadir,fname) ,delimiter=',')
-                testdata = np.hstack([d[1:, :21], d[0:-1, 21:] ])
-                diffs = d[1:, 21:] - d[0:-1, 21:]
-                test_pred = im.pred(testdata)
+                testdata = d
+                test_pred = im.pred(testdata[:,:-3])
                 i = testdata.shape[0]
                 for i in range(i):
                     nums += 1
-                    e = np.abs((diffs[i] - test_pred[i])/im.dataset_std[24:] ).sum()
+                    e = np.abs((testdata[i,-3:] - test_pred[i])/im.dataset_std[24:] ).sum()
                     errs.append(e)
                     err += e
-        np.savetxt('never.csv', errs, delimiter=",")
-
         print(err,nums)
 
 if __name__ == '__main__':
@@ -153,7 +148,7 @@ if __name__ == '__main__':
                         help="read data files and save to single large numpy array")
     parser.add_argument("--datadir", help="data directory",default="data")
     parser.add_argument("--data-save",help="where to save big np data",default="full_dataset.csv")
-    parser.add_argument("--var-save",help="where to save variances",default="var_dataset.csv")
+    parser.add_argument("--var-save",help="where to save variances",default="std_dataset.csv")
 
     # train on a dataset file
     parser.add_argument("--train", action="store_true",

@@ -31,14 +31,13 @@ class ImitationModel:
         # input: N x 24 state
         # output: N x 3 velocity diffs
 
-        state_nmlz = (state - self.dataset_mean[0:24]) / self.dataset_std[0:24]
+        state_nmlz = (state - self.dataset_mean[:-3]) / self.dataset_std[:-3]
         velocity_diff_pred_nmlz = self.regressor.predict(state_nmlz)
 
         velocity_diff_pred = \
-            velocity_diff_pred_nmlz * self.dataset_std[24:27] + self.dataset_mean[24:27]
+            velocity_diff_pred_nmlz * self.dataset_std[-3:] + self.dataset_mean[-3:]
 
         return velocity_diff_pred
-
 
 class CupDice:
     def __init__(self,args):
