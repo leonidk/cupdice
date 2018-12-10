@@ -33,6 +33,7 @@ class ImitationModel:
             if fnmatch.fnmatch(fname, "imitate*.csv"):
                 d = np.loadtxt(os.path.join('data',fname) ,delimiter=',')
                 self.dataset.append(d)
+        self.dataset_vec = self.dataset
         self.dataset = np.vstack(self.dataset)
 
     def pred(self, state):
@@ -52,6 +53,7 @@ class ImitationModel:
         state = dataset_nmlz[:,:-3]
         velocity_diff = dataset_nmlz[:,-3:]
         self.regressor.fit(state,velocity_diff)
+        return np.linalg.norm(self.regressor.predict(state)-velocity_diff,axis=1).mean()
 
 
 class CupDice:
@@ -482,6 +484,81 @@ class CupDice:
                 for i in range(num_states):
                     action = replay_states[i, -3:]
                     self.loop(action)
+        elif self.args.policy == 'dad':
+            def get_step(s1,s2):
+                def func(x):
+                    err = 0
+                    for n in range(self.args.n):
+                        self.set_space(s1)
+                        for i in range(policy_length):
+                            v = self.cup_body.velocity
+                            self.cup_body.velocity = (self.args.pv*v[0] + x[i*3+0]*xC, self.args.pv*v[1] + x[i*3+1]*yC)
+                            self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[i*3+2]*aC
+
+                            cup_cog_world = self.cup_body.local_to_world(self.cup_body.center_of_gravity)
+                            cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
+
+                            fps = 30.
+                            dt = (1/fps)
+                            steps = 5
+                            for _ in range(steps):
+                                self.space.step(dt/steps)
+                            discount = (self.args.discount ** (policy_length-i-1))
+                            err_vec = (self.get_state()[3:]-np.squeeze(s2)[3:])/self.cost_std[3:-3]
+                            state_err = np.linalg.norm(err_vec)
+                            #state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
+                            err += state_err * discount
+
+                    return err
+                import cma
+                policy_length = self.args.pl
+                popsize = 4+int(3*np.log(3*policy_length))
+                x0 = np.zeros(3*policy_length)
+                x0 = np.random.rand(3*policy_length)*2 - 1
+
+                es = cma.CMAEvolutionStrategy(x0,0.8,{'verbose':-9,'popsize': popsize, 'maxfevals':self.args.maxf,'verb_log':0})
+                es.optimize(func)
+                return es.result.xbest
+
+            model = ImitationModel(self.args.model)
+            self.model = model
+            corrects = []
+            score = model.partial_fit()
+            print(score,model.dataset.shape)
+            dad_iters = 10
+            sub_iters = 5
+            for i in range(dad_iters):
+                for j in range(sub_iters):
+
+                    for d in model.dataset_vec:
+                            N = d.shape[0]
+                            self.set_space(self.start_state)
+                            for ts in range(min(N-1,int(N*(i+1)/dad_iters))):
+                                state = d[ts+1]
+                                current_state =self.get_state()
+                                array_state = np.array(current_state)
+                                state = np.array(array_state).reshape((1,-1))
+                                corrects.append( current_state+ list(get_step(array_state,d[ts+1,:-3])))
+                                action = model.pred(state)[0]
+                                x = action
+                                v = self.cup_body.velocity
+                                self.cup_body.velocity = (self.args.pv*v[0] + x[0]*xC, self.args.pv*v[1] + x[1]*yC)
+                                self.cup_body.angular_velocity = self.args.pv*self.cup_body.angular_velocity + x[2]*aC
+                                fps = 30.
+                                dt = (1/fps)
+                                steps = 5
+                                for _ in range(steps):
+                                    self.space.step(dt/steps)
+
+                    model.dataset = np.vstack([model.dataset,np.array(corrects)])
+                    score = model.partial_fit()
+                    print(i,j,score,model.dataset.shape)
+                    model2 = [model.regressor, model.dataset_mean, model.dataset_std]
+                    import pickle
+                    with open('model_dad.pkl', 'wb') as f:
+                        pickle.dump(model2, f)
+
+
             
     def get_state(self):
         settings = [self.cup_body.position[0],self.cup_body.position[1],self.cup_body.angle]
@@ -735,6 +812,6 @@ if __name__ == '__main__':
                         help="file to imitate")
     parser.add_argument("--model", type=str,default='model.pkl',
                         help="modefile to evaluate")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg','rrt','bo'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg','rrt','bo','dad'])
     args = parser.parse_args()
     main(args)
