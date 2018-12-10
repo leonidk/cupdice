@@ -15,6 +15,7 @@ import sys
 import os
 import math
 import pickle
+import fnmatch
 
 from pdb import set_trace as st
 
@@ -27,6 +28,13 @@ class ImitationModel:
         self.dataset_mean = model[1]
         self.dataset_std = model[2]
 
+        self.dataset = []
+        for fname in sorted(os.listdir('data')):
+            if fnmatch.fnmatch(fname, "imitate*.csv"):
+                d = np.loadtxt(os.path.join('data',fname) ,delimiter=',')
+                self.dataset.append(d)
+        self.dataset = np.vstack(self.dataset)
+
     def pred(self, state):
         # input: N x 24 state
         # output: N x 3 velocity diffs
@@ -38,6 +46,13 @@ class ImitationModel:
             velocity_diff_pred_nmlz * self.dataset_std[-3:] + self.dataset_mean[-3:]
 
         return velocity_diff_pred
+    
+    def partial_fit(self):
+        dataset_nmlz = (self.dataset - self.dataset_mean) / self.dataset_std
+        state = dataset_nmlz[:,:-3]
+        velocity_diff = dataset_nmlz[:,-3:]
+        self.regressor.fit(state,velocity_diff)
+
 
 class CupDice:
     def __init__(self,args):
@@ -154,6 +169,7 @@ class CupDice:
                 self.loop()
         elif self.args.policy == 'model':
             model = ImitationModel(self.args.model)
+            self.model = model
             self.set_space(self.start_state)
             itr = 0
             while self.running:
@@ -236,7 +252,7 @@ class CupDice:
                     pickle.dump( connections, open( "connections.p", "wb" ) )
                     pickle.dump( sequence, open( "sequence.p", "wb" ) )
                     break
-                if True and i > 0 and i % 5 == 0:
+                if False and i > 0 and i % 5 == 0:
                     while self.running:
                     #print(nodes.shape,connections.shape,forces.shape)
                     #print(nodes,connections,forces)
@@ -537,6 +553,13 @@ class CupDice:
                 self.drawing = not self.drawing
             elif event.type == KEYDOWN and event.key == K_o:
                 self.set_space(self.start_state)
+                if self.args.policy == 'model':
+                    print(self.model.dataset.shape,np.array(self.dataset).shape)
+                    self.model.dataset = np.vstack([self.model.dataset,np.array(self.dataset)])
+                    self.model.partial_fit()
+                self.dataset = []
+            elif event.type == KEYDOWN and event.key == K_u:
+                self.set_space(self.start_state)
                 self.dataset = []
             elif event.type == KEYDOWN and event.key == K_s:
                 self.save_dataset()
@@ -625,7 +648,7 @@ class CupDice:
             #print(dist1,dist2,dist3)
         cup_body_reverse_gravity = -(self.cup_body.mass * self.space.gravity)
         #print(self.recording,len(self.dataset))
-        if self.recording:
+        if self.recording or self.args.policy == 'model':
             nlv = self.cup_body.velocity
             nav = self.cup_body.angular_velocity
             self.dataset.append(self.get_state() + [nlv[0]-olv[0], nlv[1]-olv[1], nav-oav])
