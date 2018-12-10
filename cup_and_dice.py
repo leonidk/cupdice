@@ -288,15 +288,17 @@ class CupDice:
                 grad_W1 = np.zeros_like(W1)
                 grad_W2 = np.zeros_like(W2)
                 grad_W3= np.zeros_like(W3)
-
-                for i_episode in range(16):
+                frac = runs/199
+                var_scale = (-1)*(1-frac) + (frac)*(-2)
+                var_scale = 2**var_scale
+                for i_episode in range(32):
                     self.set_space(self.start_state)
                     epi_grad_W1 = np.zeros([pl] + list(W1.shape))
                     epi_grad_W2 = np.zeros([pl] + list(W2.shape))
                     epi_grad_W3 = np.zeros([pl] + list(W3.shape))
 
                     epi_rewards = np.zeros(pl)
-                    alpha = 0.05
+                    alpha = 0.1
                     for t in range(pl):
                         features = (np.array(self.get_state())-self.cost_avg[:-3])/self.cost_std[:-3]
 
@@ -305,9 +307,9 @@ class CupDice:
                         h3 = np.dot(h2,W2)
                         h4 = np.maximum(h3,alpha*h3)
                         h5 = np.dot(h4,W3)
-                        h6 = np.tanh(h5) + np.random.randn(3)/2
+                        h6 = np.tanh(h5) + np.random.randn(3)*var_scale
                         x = (h6)
-                        grad_log = ((h5 - h6)*((1/2)**2))*(1-np.tanh(h5)**2)
+                        grad_log = ((h5 - h6)*((var_scale)**2))*(1-np.tanh(h5)**2)
 
                         v = self.cup_body.velocity
                         self.cup_body.velocity = (v[0]+x[0]*xC,v[1]+x[1]*yC)
@@ -376,14 +378,16 @@ class CupDice:
                     h3 = np.dot(h2,W2)
                     h4 = np.maximum(h3,alpha*h3)
                     h5 = np.dot(h4,W3)
-                    h6 = np.tanh(h5) + np.random.randn(3)/2
+                    h6 = np.tanh(h5) #+ np.random.randn(3)/3
                     x = (h6)
                     self.loop([x[0]*xC,x[1]*yC,x[2]*aC])
-        elif self.args.policy == 'cma' or self.args.policy == 'de' or self.args.policy == 'opt':
+        elif self.args.policy == 'cma' or self.args.policy == 'de' or self.args.policy == 'opt' or self.args.policy == 'bo':
             policy_length = self.args.pl
-
+            import time
             feval_max = self.args.maxf
             def func(x):
+                t1 = time.time()
+                x = np.squeeze(x)
                 err = 0
                 for n in range(self.args.n):
                     self.set_space(self.start_state)
@@ -409,7 +413,8 @@ class CupDice:
                         #state_err = np.linalg.norm([err_vec[0],err_vec[1],err_vec[6],err_vec[7],err_vec[12],err_vec[13]])
                         #print(i,state_err)
                         err += state_err * discount
-
+                t2 = time.time()
+                #print(t2-t1)
                 new_state = self.get_state()
                 return err#np.linalg.norm( (new_state[3:]-np.squeeze(self.goal_state)[3:])/self.cost_std[3:]) 
             if self.args.policy == 'cma':
@@ -427,6 +432,12 @@ class CupDice:
                 x0 = np.random.rand(3*policy_length)*2 - 1
                 res = opt.basinhopping(func,x0,disp=True)
                 x = res.x
+            elif self.args.policy == 'bo':
+                import GPyOpt
+                domain =[{'name': 'var'+str(idx+1), 'type': 'continuous', 'domain': (-1,1)} for idx,p in enumerate(range(3*policy_length))]
+                prob = GPyOpt.methods.BayesianOptimization(func,domain)
+                prob.run_optimization(feval_max)
+                x = prob.x_opt
             else:
                 import scipy.optimize as opt
                 popsize = 15
@@ -724,6 +735,6 @@ if __name__ == '__main__':
                         help="file to imitate")
     parser.add_argument("--model", type=str,default='model.pkl',
                         help="modefile to evaluate")
-    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg','rrt'])
+    parser.add_argument('policy', nargs='?', default='play',choices=['play','cma','de','model','replay','opt','pg','rrt','bo'])
     args = parser.parse_args()
     main(args)
